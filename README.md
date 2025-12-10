@@ -1,6 +1,4 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+[![pZug4HO.png](https://s41.ax1x.com/2025/12/10/pZug4HO.png)](https://imgchr.com/i/pZug4HO)
 # Lite Wiki
 
 A lite version of Wiki, providing AI-assisted online documents editor and team collaboration application built with React and Vite.
