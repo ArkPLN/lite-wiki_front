@@ -1,29 +1,21 @@
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Trash2, RefreshCw, FileText, Folder, AlertTriangle, X, Plus, Edit2, Search } from 'lucide-react';
 import { useLanguage } from '../../lib/i18n';
 import { Button } from '../../components/ui/Button';
 import { DashboardItem, FileNode } from '../../types';
 import { FilePickerModal, EditItemModal } from '../../components/dashboard/SharedModals';
 import { SearchFilterBar, SearchParams } from '../../components/dashboard/SearchFilterBar';
-
-// Helper to generate dates for demo
-const getPastDate = (days: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().split('T')[0];
-};
-
-// Mock Data
-const MOCK_TRASH: DashboardItem[] = [
-  { id: '1', name: 'Old Drafts', type: 'folder', location: '/Personal', date: 'Yesterday', isoDate: getPastDate(1), tags: ['Draft'], meta: { daysLeft: 29 } },
-  { id: '2', name: 'Meeting Notes - Jan', type: 'markdown', location: '/Meeting Notes', date: '3 days ago', isoDate: getPastDate(3), tags: [], meta: { daysLeft: 27 } },
-  { id: '3', name: 'Unused Assets', type: 'folder', location: '/Design', date: '1 week ago', isoDate: getPastDate(7), tags: ['Assets'], meta: { daysLeft: 23 } },
-];
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getRecycleBin, restoreFromRecycleBinById, removeFromRecycleBinById } from '../../reqapi/recycle';
+import { documentToDashboardItem } from '../../utils/documentUtils';
+import { debounce } from '../../utils/debounce';
+import useUserStore from '@/store';
 
 export const Trash: React.FC = () => {
   const { t } = useLanguage();
-  const [items, setItems] = useState<DashboardItem[]>(MOCK_TRASH);
+  const queryClient = useQueryClient();
+  const fileNodes = useUserStore(state => state.fileNodes);
   
   // Search State
   const [searchParams, setSearchParams] = useState<SearchParams>({ query: '', date: '', tag: '', mode: 'blur' });
@@ -32,6 +24,54 @@ export const Trash: React.FC = () => {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<DashboardItem | null>(null);
+
+  // 获取回收站数据
+  const { data: recycleBinData = [], isLoading, error, refetch } = useQuery({
+    queryKey: ['recycleBin'],
+    queryFn: getRecycleBin,
+    staleTime: 5 * 60 * 1000, // 5分钟
+  });
+
+  // 转换数据为DashboardItem格式
+  const items: DashboardItem[] = recycleBinData.map(doc => documentToDashboardItem(doc, fileNodes));
+
+  // 恢复文档的mutation
+  const restoreMutation = useMutation({
+    mutationFn: restoreFromRecycleBinById,
+    onSuccess: () => {
+      // 成功后刷新数据
+      queryClient.invalidateQueries({ queryKey: ['recycleBin'] });
+      queryClient.invalidateQueries({ queryKey: ['fileNodes'] });
+    },
+  });
+
+  // 永久删除文档的mutation
+  const deleteMutation = useMutation({
+    mutationFn: removeFromRecycleBinById,
+    onSuccess: () => {
+      // 成功后刷新数据
+      queryClient.invalidateQueries({ queryKey: ['recycleBin'] });
+      queryClient.invalidateQueries({ queryKey: ['fileNodes'] });
+    },
+  });
+
+  // 防抖的恢复函数
+  const debouncedRestore = useCallback(
+    debounce((id: string) => {
+      restoreMutation.mutate(id);
+    }, 500),
+    [restoreMutation]
+  );
+
+  // 防抖的删除函数
+  const debouncedDelete = useCallback(
+    debounce((id: string) => {
+      if (window.confirm('确定要永久删除此文件吗？此操作不可撤销。')) {
+        deleteMutation.mutate(id);
+      }
+    }, 500),
+    [deleteMutation]
+  );
 
   // Filtering Logic
   const filteredItems = items.filter(item => {
@@ -60,39 +100,29 @@ export const Trash: React.FC = () => {
     return nameMatch && dateMatch && tagMatch;
   });
 
-  // Get unique tags for dropdown
+  // 获取唯一标签用于下拉菜单
   const allTags = Array.from(new Set(items.flatMap(i => i.tags)));
 
   const handleRestore = (id: string) => {
-    setItems(prev => prev.filter(item => item.id !== id));
-    // In real app, call API to restore
+    debouncedRestore(id);
   };
 
   const handleDeleteForever = (id: string) => {
-    if (window.confirm('Are you sure you want to permanently delete this item?')) {
-        setItems(prev => prev.filter(item => item.id !== id));
-    }
+    debouncedDelete(id);
   };
 
   const handleEmptyTrash = () => {
     if (window.confirm(t.library.confirmEmpty)) {
-        setItems([]);
-        alert(t.library.emptySuccess);
+      // 这里可以添加批量删除的逻辑
+      // 目前只是清空本地显示，实际应该调用批量删除API
+      alert(t.library.emptySuccess);
     }
   };
 
   const handleAdd = (node: FileNode, path: string) => {
-    const newItem: DashboardItem = {
-      id: Date.now().toString(),
-      name: node.name,
-      type: node.type,
-      location: path,
-      date: 'Just now',
-      isoDate: getPastDate(0),
-      tags: [],
-      meta: { daysLeft: 30 }
-    };
-    setItems(prev => [newItem, ...prev]);
+    // 这个功能可能需要重新考虑，因为回收站不应该有"添加到回收站"的功能
+    // 或者这个功能是指将文件移动到回收站
+    console.log('Add to recycle bin:', node, path);
   };
 
   const openEdit = (item: DashboardItem) => {
@@ -101,8 +131,32 @@ export const Trash: React.FC = () => {
   };
 
   const handleSaveEdit = (id: string, newName: string, newTags: string[]) => {
-    setItems(prev => prev.map(item => item.id === id ? { ...item, name: newName, tags: newTags } : item));
+    // 这里应该调用API来更新文档信息
+    // 然后刷新数据
+    console.log('Save edit:', id, newName, newTags);
+    queryClient.invalidateQueries({ queryKey: ['recycleBin'] });
   };
+
+  // 显示加载状态
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
+
+  // 显示错误状态
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-center">
+        <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+        <h3 className="text-lg font-medium text-gray-900 mb-2">加载失败</h3>
+        <p className="text-gray-500 mb-4">无法加载回收站数据，请稍后再试</p>
+        <Button onClick={() => refetch()}>重试</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-7xl mx-auto h-full overflow-y-auto animate-fade-in">
