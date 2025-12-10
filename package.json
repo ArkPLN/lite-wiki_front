@@ -1,0 +1,53 @@
+{
+  "name": "lite-wiki-knowledge-base",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^7.3.6",
+    "@swc/react-compiler": "^1.15.3",
+    "@tanstack/react-query": "^5.90.12",
+    "@vavt/rt-extension": "^4.0.0",
+    "@vitejs/plugin-react-swc": "^4.2.2",
+    "axios": "^1.13.2",
+    "jsonwebtoken": "^9.0.2",
+    "lucide-react": "0.378.0",
+    "md-editor-rt": "^6.2.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "react-markdown": "9.0.1",
+    "react-router-dom": "6.23.1",
+    "remark-gfm": "4.0.0",
+    "tailwindcss": "^4.1.17",
+    "zustand": "^5.0.9"
+  },
+  "devDependencies": {
+    "@swc/cli": "^0.7.9",
+    "@swc/core": "^1.15.3",
+    "@tailwindcss/postcss": "^4.1.17",
+    "@tanstack/eslint-plugin-query": "^5.91.2",
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.4.22",
+    "axios": "^1.13.2",
+    "json-server": "1.0.0-beta.3",
+    "jsonwebtoken": "^9.0.2",
+    "lucide-react": "0.378.0",
+    "openapi-typescript": "^7.10.1",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "react-markdown": "9.0.1",
+    "react-router-dom": "6.23.1",
+    "remark-gfm": "4.0.0",
+    "tailwindcss": "^4.1.17",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}
