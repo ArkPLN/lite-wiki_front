@@ -20,6 +20,7 @@ A lite version of Wiki, providing AI-assisted online documents editor and team c
 - React Router
 - React Query
 - TailwindCSS
+- Lucide React Icons
 - Material UI
 - md-editor-rt
 - Zustand
@@ -27,6 +28,9 @@ A lite version of Wiki, providing AI-assisted online documents editor and team c
 ## Backend
 - ASP.NET Core
 - Entity Framework Core
+- Automapper
+- Scalar API
+- Semantic Kernel
 - PostgreSQL
 
 ## Run Locally

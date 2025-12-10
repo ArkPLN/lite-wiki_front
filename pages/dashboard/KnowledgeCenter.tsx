@@ -16,6 +16,8 @@ import {
   File
 } from 'lucide-react';
 import { useLanguage } from '../../lib/i18n';
+import { FilePickerModal } from '../../components/dashboard/SharedModals';
+import useUserStore from '../../store/index';
 
 interface Message {
   id: string;
@@ -33,66 +35,6 @@ interface IndexedFile {
   status: 'indexed' | 'processing';
 }
 
-// --- SUBCOMPONENT: Storage Donut Chart ---
-const StorageChart = ({ used, limit }: { used: number; limit: number }) => {
-  const percent = Math.min((used / limit) * 100, 100);
-  const radius = 36;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (percent / 100) * circumference;
-  
-  return (
-    <div className="relative flex items-center justify-center py-2">
-      <svg className="transform -rotate-90 w-32 h-32">
-        {/* Track */}
-        <circle cx="64" cy="64" r={radius} stroke="#f3f4f6" strokeWidth="8" fill="transparent" />
-        {/* Indicator */}
-        <circle 
-          cx="64" cy="64" r={radius} 
-          stroke={percent > 90 ? '#ef4444' : '#4f46e5'} 
-          strokeWidth="8" 
-          fill="transparent" 
-          strokeDasharray={circumference} 
-          strokeDashoffset={offset} 
-          strokeLinecap="round"
-          className="transition-all duration-1000 ease-out"
-        />
-      </svg>
-      <div className="absolute text-center">
-        <div className="text-xl font-bold text-slate-900">{Math.round(percent)}%</div>
-        <div className="text-[10px] text-gray-500 uppercase tracking-wider">Used</div>
-      </div>
-    </div>
-  );
-};
-
-// --- SUBCOMPONENT: File Type Distribution ---
-const DistributionChart = ({ data }: { data: { type: string; count: number; color: string }[] }) => {
-  const total = data.reduce((acc, curr) => acc + curr.count, 0);
-  
-  return (
-    <div className="space-y-3 mt-2">
-      <div className="flex h-2 rounded-full overflow-hidden bg-gray-100 w-full">
-        {data.map((item, i) => (
-          <div 
-            key={i}
-            style={{ width: `${(item.count / total) * 100}%`, backgroundColor: item.color }}
-            className="h-full transition-all duration-500"
-          />
-        ))}
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        {data.map((item, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-            <span className="text-xs text-gray-600 flex-1 truncate">{item.type}</span>
-            <span className="text-xs font-bold text-gray-900">{Math.round((item.count/total)*100)}%</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
 export const KnowledgeCenter: React.FC = () => {
   const { t } = useLanguage();
   const [messages, setMessages] = useState<Message[]>([
@@ -108,28 +50,57 @@ export const KnowledgeCenter: React.FC = () => {
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [deepThinkingEnabled, setDeepThinkingEnabled] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-
-  // Mock Stats Data
-  const stats = {
-    totalVectors: '1.2M',
-    storageUsed: 450, // MB
-    storageLimit: 1024, // MB
-    lastUpdated: '2 hours ago',
-    filesCount: 124,
-    fileDistribution: [
-      { type: 'PDF', count: 45, color: '#ef4444' }, // Red
-      { type: 'Markdown', count: 55, color: '#3b82f6' }, // Blue
-      { type: 'Docs', count: 15, color: '#2563eb' }, // Darker Blue
-      { type: 'Other', count: 9, color: '#9ca3af' }, // Gray
-    ]
+  
+  // FilePickerModal状态
+  const [isFilePickerOpen, setIsFilePickerOpen] = useState(false);
+  const { fileNodes } = useUserStore();
+  
+  // 索引文件列表状态
+  const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
+  
+  // 处理文件选择
+  const handleFileSelect = (node: any, path: string) => {
+    // 只允许选择文件，不允许选择文件夹
+    if (node.type === 'folder') {
+      return;
+    }
+    
+    // 检查文件是否已经在索引列表中
+    const isAlreadyIndexed = indexedFiles.some(file => file.id === node.id);
+    if (isAlreadyIndexed) {
+      console.log('File already indexed:', node.name);
+      return;
+    }
+    
+    // 创建新的索引文件对象
+    const newIndexedFile: IndexedFile = {
+      id: node.id,
+      name: node.name,
+      type: node.type || 'unknown',
+      size: node.size || '0 KB',
+      updated: new Date().toLocaleDateString(),
+      status: 'processing' // 初始状态为处理中
+    };
+    
+    // 添加到索引列表
+    setIndexedFiles(prev => [...prev, newIndexedFile]);
+    
+    // 关闭文件选择器
+    setIsFilePickerOpen(false);
+    
+    // 模拟索引处理过程
+    setTimeout(() => {
+      setIndexedFiles(prev => 
+        prev.map(file => 
+          file.id === node.id 
+            ? { ...file, status: 'indexed' as const } 
+            : file
+        )
+      );
+    }, 2000);
+    
+    console.log('Added file to index:', node.name, 'Path:', path);
   };
-
-  const indexedFiles: IndexedFile[] = [
-    { id: '1', name: 'Project_Alpha_Specs.pdf', type: 'PDF', size: '2.4MB', updated: '2h ago', status: 'indexed' },
-    { id: '2', name: 'Meeting_Notes_Q3.md', type: 'Markdown', size: '15KB', updated: '5h ago', status: 'indexed' },
-    { id: '3', name: 'API_Documentation_v2.docx', type: 'Word', size: '1.1MB', updated: '1d ago', status: 'processing' },
-    { id: '4', name: 'Engineering_Guidelines.md', type: 'Markdown', size: '8KB', updated: '2d ago', status: 'indexed' },
-  ];
 
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -280,52 +251,8 @@ export const KnowledgeCenter: React.FC = () => {
         </div>
       </div>
 
-      {/* RIGHT: Sidebar Statistics */}
+      {/* RIGHT: Sidebar File List */}
       <div className="w-80 bg-gray-50 border-l border-gray-200 flex-col gap-6 hidden xl:flex overflow-hidden">
-        
-        {/* Top Stats Area */}
-        <div className="p-6 pb-0 overflow-y-auto scrollbar-hide">
-          <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-            <PieChart className="h-4 w-4 text-primary-600" />
-            {t.knowledge.statsTitle}
-          </h3>
-          
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-6">
-            {/* Storage Chart */}
-            <div>
-              <StorageChart used={stats.storageUsed} limit={stats.storageLimit} />
-              <div className="flex justify-between text-xs text-gray-500 mt-2 px-2">
-                <span>0 GB</span>
-                <span>{stats.storageUsed}MB Used</span>
-                <span>1 GB</span>
-              </div>
-            </div>
-
-            {/* File Distribution */}
-            <div className="border-t border-gray-100 pt-4">
-              <span className="text-xs font-semibold text-gray-500 uppercase">Content Types</span>
-              <DistributionChart data={stats.fileDistribution} />
-            </div>
-
-            {/* General Metrics */}
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 text-center">
-                <div className="text-lg font-bold text-slate-900">{stats.filesCount}</div>
-                <div className="text-[10px] text-gray-500 uppercase">{t.knowledge.filesIndexed}</div>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 text-center">
-                <div className="text-lg font-bold text-slate-900">{stats.totalVectors}</div>
-                <div className="text-[10px] text-gray-500 uppercase">{t.knowledge.vectorCount}</div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-center gap-2 text-[10px] text-gray-400">
-              <Clock className="h-3 w-3" />
-              {t.knowledge.lastUpdated}: {stats.lastUpdated}
-            </div>
-          </div>
-        </div>
-
         {/* File List */}
         <div className="flex-1 flex flex-col min-h-0">
           <div className="px-6 py-3 flex justify-between items-center bg-gray-50/50">
@@ -333,36 +260,66 @@ export const KnowledgeCenter: React.FC = () => {
               <HardDrive className="h-4 w-4 text-gray-500" />
               {t.knowledge.indexedFilesTitle}
             </h3>
-            <button className="p-1.5 bg-white border border-gray-200 hover:border-primary-200 hover:text-primary-600 rounded-md text-gray-500 transition-all shadow-sm" title={t.knowledge.uploadNew}>
+            <button 
+              className="p-1.5 bg-white border border-gray-200 hover:border-primary-200 hover:text-primary-600 rounded-md text-gray-500 transition-all shadow-sm" 
+              title={t.knowledge.uploadNew}
+              onClick={() => setIsFilePickerOpen(true)}
+            >
               <Plus className="h-3.5 w-3.5" />
             </button>
           </div>
           
           <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-2">
-            {indexedFiles.map(file => (
-              <div key={file.id} className="p-3 bg-white hover:bg-blue-50/50 rounded-xl border border-gray-200 hover:border-blue-100 flex items-center gap-3 transition-all group cursor-pointer shadow-sm">
-                <div className={`p-2 rounded-lg shrink-0 ${file.type === 'PDF' ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-500'}`}>
-                  {file.type === 'PDF' ? <FileText className="h-4 w-4" /> : <File className="h-4 w-4" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-start">
-                    <h4 className="text-sm font-medium text-gray-900 truncate pr-2" title={file.name}>{file.name}</h4>
-                    {file.status === 'processing' && (
-                      <span className="flex h-2 w-2 relative shrink-0 mt-1.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-gray-400 flex justify-between mt-0.5">
-                    <span>{file.size}</span>
-                    <span className="group-hover:text-gray-600 transition-colors">{file.updated}</span>
-                  </p>
-                </div>
+            {indexedFiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-32 text-gray-400">
+                <File className="h-8 w-8 mb-2" />
+                <p className="text-sm">No indexed files</p>
+                <p className="text-xs mt-1">Click the + button to add documents</p>
               </div>
-            ))}
+            ) : (
+              indexedFiles.map((file) => (
+                <div key={file.id} className="bg-white p-3 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <FileText className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                        <h4 className="font-medium text-sm text-gray-900 truncate">{file.name}</h4>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                        <span>{file.type}</span>
+                        <span>{file.size}</span>
+                        <span>{file.updated}</span>
+                      </div>
+                    </div>
+                    <div className="ml-2 flex-shrink-0">
+                      {file.status === 'processing' ? (
+                        <div className="flex items-center gap-1 text-xs text-amber-600">
+                          <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></div>
+                          <span>处理中</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-xs text-green-600">
+                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          <span>已索引</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
+        
+        {/* FilePicker Modal */}
+        {fileNodes && (
+          <FilePickerModal 
+            isOpen={isFilePickerOpen}
+            onClose={() => setIsFilePickerOpen(false)}
+            onSelect={handleFileSelect}
+            fileNodes={fileNodes}
+          />
+        )}
       </div>
     </div>
   );
