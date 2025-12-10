@@ -51,6 +51,8 @@ export interface FileNode {
   // Versioning
   currentVersion?: string;
   versions?: FileVersion[];
+  // Knowledge Base
+  inKnowledgeBase?: boolean;
 }
 
 // Generic Dashboard Item for Favorites/Recent/Trash

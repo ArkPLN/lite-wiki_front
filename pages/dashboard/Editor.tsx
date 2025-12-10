@@ -45,7 +45,8 @@ import {
   Calendar, 
   Shield, 
   Check,
-  UploadCloud
+  UploadCloud,
+  Database
 } from 'lucide-react';
 import { useBlocker } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -58,6 +59,8 @@ import { CreateDocumentRequest, Document, ModifyDocumentRequest } from '@/types/
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { getDocumentsList, getDocumentById, uploadFile } from '@/reqapi/docs';
 import { deleteFile } from '@/reqapi/recycle';
+import { addDocumentToKnowledgeBase, removeDocumentFromKnowledgeBase } from '@/reqapi/kb';
+import { debounce } from '@/utils/debounce';
 import { CircularProgress } from '@mui/material';
 
 // Import MdEditorRt components
@@ -843,6 +846,11 @@ export const Editor: React.FC = () => {
   
   // Share Modal State
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  
+  // Knowledge Base State
+  const [isInKnowledgeBase, setIsInKnowledgeBase] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
 
   // Confirm Dialog State
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -967,7 +975,8 @@ export const Editor: React.FC = () => {
         type: doc.type === 'text/markdown' ? 'markdown' : 'text',
         content: doc.content || '',
         currentVersion: 'V1.0',
-        versions: [INITIAL_VERSIONS[2]] // Use mock version data for now
+        versions: [INITIAL_VERSIONS[2]], // Use mock version data for now
+        inKnowledgeBase: doc.inKnowledgeBase || false
       }));
 
       // Merge server data with existing files to preserve uploaded files
@@ -998,9 +1007,18 @@ export const Editor: React.FC = () => {
          type: newDoc.type === 'text/markdown' ? 'markdown' : 'text',
          content: newDoc.content || '',
          currentVersion: 'V1.0',
-         versions: [INITIAL_VERSIONS[2]] // Use the mock version data for now
+         versions: [INITIAL_VERSIONS[2]], // Use the mock version data for now
+         inKnowledgeBase: newDoc.inKnowledgeBase || false
        };
-       setFiles(prev => [...prev, fileNode]);
+       const updatedFiles = [...files, fileNode];
+       setFiles(updatedFiles);
+       
+       // Update zustand userState with the latest fileNodes
+       userState.setFileNodes(updatedFiles);
+       
+       // Invalidate and refetch documents list to sync with server
+       queryClient.invalidateQueries({ queryKey: ['documentsList'] });
+       
        setActiveFileId(newDoc.id);
        setFileName(newDoc.name);
        setContent(newDoc.content || '');
@@ -1018,11 +1036,16 @@ export const Editor: React.FC = () => {
        modifyDocument(documentData, id),
      onSuccess: (updatedDoc: Document) => {
          // Update the FileNode in the files list
-         setFiles(prev => prev.map(file => 
+         const updatedFiles = files.map(file => 
            file.id === updatedDoc.id 
              ? { ...file, content: updatedDoc.content || '' }
              : file
-         ));
+         );
+         setFiles(updatedFiles);
+         
+         // Update zustand userState with the latest fileNodes
+         userState.setFileNodes(updatedFiles);
+         
          // Update local state and reset dirty state
          setSavedContent(updatedDoc.content || '');
          console.log('Document saved successfully');
@@ -1044,6 +1067,46 @@ export const Editor: React.FC = () => {
      onError: (error: any) => {
        console.error('Failed to move document to recycle bin:', error);
        alert(`Failed to delete document: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
+     }
+   });
+
+   // --- React Query: Add/Remove Document to/from Knowledge Base Mutation ---
+   const toggleKnowledgeBaseMutation = useMutation({
+     mutationFn: ({ docId, isInKb }: { docId: string; isInKb: boolean }) => {
+       return isInKb 
+         ? removeDocumentFromKnowledgeBase(docId)
+         : addDocumentToKnowledgeBase(docId);
+     },
+     onSuccess: (response, variables) => {
+       const action = variables.isInKb ? 'removed from' : 'added to';
+       console.log(`Document ${action} knowledge base successfully:`, response);
+       
+       // Update local state
+       setIsInKnowledgeBase(!variables.isInKb);
+       
+       // Update file in files list
+       const updatedFiles = files.map(file => 
+         file.id === variables.docId 
+           ? { ...file, inKnowledgeBase: !variables.isInKb }
+           : file
+       );
+       setFiles(updatedFiles);
+       
+       // Update zustand userState with the latest fileNodes
+       userState.setFileNodes(updatedFiles);
+       
+       // Invalidate and refetch documents list to sync with server
+       queryClient.invalidateQueries({ queryKey: ['documentsList'] });
+       
+       // Show toast notification
+       setToastMessage(`文档已${variables.isInKb ? '从知识库移除' : '添加到知识库'}`);
+       setShowToast(true);
+       setTimeout(() => setShowToast(false), 3000);
+     },
+     onError: (error: any, variables) => {
+       const action = variables.isInKb ? 'remove from' : 'add to';
+       console.error(`Failed to ${action} knowledge base:`, error);
+       alert(`Failed to ${action} knowledge base: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
      }
    });
 
@@ -1070,9 +1133,31 @@ export const Editor: React.FC = () => {
     const resetDirtyState = useCallback(() => {
       setSavedContent(content);
     }, [content]);
+    
+    // --- Knowledge Base Toggle Handler (with debounce) ---
+    const handleToggleKnowledgeBase = useCallback(
+      debounce(() => {
+        if (!activeFileId) return;
+        
+        toggleKnowledgeBaseMutation.mutate({
+          docId: activeFileId,
+          isInKb: isInKnowledgeBase
+        });
+      }, 500),
+      [activeFileId, isInKnowledgeBase, toggleKnowledgeBaseMutation]
+    );
   
   const isDirty = content !== savedContent;
   const activeNode = findNodeById(files, activeFileId);
+  
+  // --- Update knowledge base state when active file changes ---
+  useEffect(() => {
+    if (activeNode) {
+      setIsInKnowledgeBase(activeNode.inKnowledgeBase || false);
+    } else {
+      setIsInKnowledgeBase(false);
+    }
+  }, [activeNode, activeFileId]);
 
   // --- 1. Prevent Browser Close/Refresh ---
   useEffect(() => {
@@ -1278,7 +1363,12 @@ export const Editor: React.FC = () => {
             versions: undefined
           };
 
-          setFiles(prev => createNodeRecursive(prev, parentId, newNode));
+          const updatedFiles = createNodeRecursive(files, parentId, newNode);
+          setFiles(updatedFiles);
+          
+          // Update zustand userState with the latest fileNodes
+          userState.setFileNodes(updatedFiles);
+          
           if (parentId) {
             setExpandedIds(prev => new Set(prev).add(parentId));
           }
@@ -1307,7 +1397,12 @@ export const Editor: React.FC = () => {
       onConfirm: (newName) => {
         if (!newName.trim() || newName.trim() === currentName) return;
 
-        setFiles(prev => renameNodeRecursive(prev, id, newName.trim()));
+        const updatedFiles = renameNodeRecursive(files, id, newName.trim());
+        setFiles(updatedFiles);
+        
+        // Update zustand userState with the latest fileNodes
+        userState.setFileNodes(updatedFiles);
+        
         if (id === activeFileId) setFileName(newName.trim());
       }
     });
@@ -1332,6 +1427,9 @@ export const Editor: React.FC = () => {
             // After successful API call, update local state
             const newFiles = deleteNodeRecursive(files, id);
             setFiles(newFiles);
+            
+            // Update zustand userState with the latest fileNodes
+            userState.setFileNodes(newFiles);
             
             // Check if active file still exists in the new tree
             const isActiveFileStillPresent = activeFileId && findNodeById(newFiles, activeFileId);
@@ -1430,7 +1528,12 @@ export const Editor: React.FC = () => {
             }
             
             // Update local state
-            setFiles(prev => batchDeleteRecursive(prev, selectedIds));
+            const updatedFiles = batchDeleteRecursive(files, selectedIds);
+            setFiles(updatedFiles);
+            
+            // Update zustand userState with the latest fileNodes
+            userState.setFileNodes(updatedFiles);
+            
             setSelectedIds(new Set());
             setIsBatchMode(false);
           }
@@ -1454,7 +1557,8 @@ export const Editor: React.FC = () => {
           type: fullDoc.type === 'text/markdown' ? 'markdown' : 'text',
           content: fullDoc.content || '',
           currentVersion: 'V1.0',
-          versions: [INITIAL_VERSIONS[2]] // Use same mock version data as sync logic
+          versions: [INITIAL_VERSIONS[2]], // Use same mock version data as sync logic
+          inKnowledgeBase: fullDoc.inKnowledgeBase || false
         };
         
         // Add the new file node to local state immediately to prevent disappearing
@@ -1828,6 +1932,24 @@ export const Editor: React.FC = () => {
                 <Share2 className="h-4 w-4" />
               </button>
               <button 
+                onClick={handleToggleKnowledgeBase}
+                className={`p-2 rounded-lg transition-colors flex items-center gap-2 ${
+                  toggleKnowledgeBaseMutation.isPending 
+                    ? 'text-gray-400 cursor-not-allowed' 
+                    : isInKnowledgeBase
+                      ? 'text-blue-600 bg-blue-50 hover:bg-blue-100'
+                      : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
+                }`} 
+                title={isInKnowledgeBase ? "从知识库移除" : "添加到知识库"}
+                disabled={!activeFileId || toggleKnowledgeBaseMutation.isPending}
+              >
+                {toggleKnowledgeBaseMutation.isPending ? (
+                  <CircularProgress size={16} thickness={4} />
+                ) : (
+                  <Database className="h-4 w-4" />
+                )}
+              </button>
+              <button 
                 onClick={handleDownload}
                 className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors" 
                 title="Export"
@@ -1990,6 +2112,13 @@ export const Editor: React.FC = () => {
          onClose={() => setIsShareModalOpen(false)}
          fileName={fileName}
       />
+
+      {/* Toast Notification */}
+      {showToast && (
+        <div className="fixed bottom-8 right-8 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-fade-in">
+          {toastMessage}
+        </div>
+      )}
 
       {/* Confirm Dialog */}
       <ConfirmDialog
