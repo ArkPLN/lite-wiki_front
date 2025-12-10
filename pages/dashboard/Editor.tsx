@@ -50,12 +50,14 @@ import {
 } from 'lucide-react';
 import { useBlocker } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { FileNode, FileType, AIMode, AIMessage, Comment, FileVersion, VersionState } from '../../types';
+import { FileNode, FileType, AIMode, AIMessage, FileVersion, VersionState } from '../../types';
 import { useLanguage } from '@/lib/i18n';
 import { Button } from '../../components/ui/Button';
 import { MOCK_USER } from '../../constants';
 import useUserStore from '@/store';
 import { CreateDocumentRequest, Document, ModifyDocumentRequest } from '@/types/docs/doc';
+import { getDocumentComments, postDocumentComment } from '@/reqapi/comment';
+import { CommentList, CommentResponse, PostCommentRequest } from '@/types/docs/comment';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { getDocumentsList, getDocumentById, uploadFile } from '@/reqapi/docs';
 import { deleteFile } from '@/reqapi/recycle';
@@ -76,24 +78,6 @@ const INITIAL_VERSIONS: FileVersion[] = [
   { id: 'v3', version: 'V1.2', state: 'working', updatedAt: 'Just now', author: 'You' },
   { id: 'v2', version: 'V1.1', state: 'locked', updatedAt: '2 days ago', author: 'Sarah' },
   { id: 'v1', version: 'V1.0', state: 'archived', updatedAt: '1 week ago', author: 'You' },
-];
-
-const INITIAL_COMMENTS: Comment[] = [
-  { 
-    id: 'c1', 
-    author: 'Sarah Chen', 
-    content: 'Should we add more details about the AI features here?', 
-    timestamp: new Date().toISOString(),
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah'
-  },
-  { 
-    id: 'c2', 
-    author: 'Mike Design', 
-    content: 'I agree, the layout looks good though. I attached the new wireframe for reference.', 
-    timestamp: new Date().toISOString(),
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mike',
-    attachments: ['wireframe_v2.png']
-  }
 ];
 
 // Mock History Data for AI
@@ -833,7 +817,6 @@ export const Editor: React.FC = () => {
   const userState = useUserStore();
   
   // Comments State
-  const [comments, setComments] = useState<Comment[]>(INITIAL_COMMENTS);
   const [newComment, setNewComment] = useState('');
   
   // Batch Mode State
@@ -965,6 +948,16 @@ export const Editor: React.FC = () => {
     staleTime: 1000 * 60 * 2, // 2 minutes
   });
 
+  // --- React Query: Comments Query ---
+  const { data: comments = [], isLoading: isLoadingComments, error: commentsError } = useQuery({
+    queryKey: ['documentComments', activeFileId],
+    queryFn: () => getDocumentComments(activeFileId),
+    enabled: !!activeFileId, // Only run when activeFileId exists
+    staleTime: 1000 * 60 * 2, // 2 minutes
+    refetchOnWindowFocus: false,
+    retry: 2,
+  });
+
   // --- Effect: Sync documents list to files state ---
   useEffect(() => {
     if (documentsList && Array.isArray(documentsList)) {
@@ -990,9 +983,15 @@ export const Editor: React.FC = () => {
   // --- Effect: Load document content when activeFileId changes ---
   useEffect(() => {
     if (currentDocument && activeFileId) {
-      setContent(currentDocument.content || '');
+      // Only update if the content is different to avoid unnecessary re-renders
+      if (content !== currentDocument.content) {
+        setContent(currentDocument.content || '');
+      }
+      // Always update savedContent to ensure it matches the server content
       setSavedContent(currentDocument.content || '');
-      setFileName(currentDocument.name);
+      if (fileName !== currentDocument.name) {
+        setFileName(currentDocument.name);
+      }
     }
   }, [currentDocument, activeFileId]);
 
@@ -1110,6 +1109,31 @@ export const Editor: React.FC = () => {
      }
    });
 
+   // --- React Query: Post Comment Mutation ---
+   const postCommentMutation = useMutation({
+     mutationFn: ({ docId, content }: { docId: string; content: string }) => {
+       return postDocumentComment(docId, { content });
+     },
+     onSuccess: (response, variables) => {
+       console.log('Comment posted successfully:', response);
+       
+       // Invalidate and refetch comments to sync with server
+       queryClient.invalidateQueries({ queryKey: ['documentComments', activeFileId] });
+       
+       // Clear the input field
+       setNewComment('');
+       
+       // Show success message
+       setToastMessage('评论发布成功');
+       setShowToast(true);
+       setTimeout(() => setShowToast(false), 3000);
+     },
+     onError: (error: any) => {
+       console.error('Failed to post comment:', error);
+       alert(`发布评论失败: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
+     }
+   });
+
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
    // --- Save Document Handler ---
@@ -1224,6 +1248,9 @@ export const Editor: React.FC = () => {
       setFileName(docData.name);
       setContent(docData.content || '');
       setSavedContent(docData.content || '');
+      
+      // Also update the query cache to ensure consistency
+      queryClient.setQueryData(['document', documentId], docData);
     } catch (error) {
       console.error('Failed to load document content:', error);
       // Fallback to local content if API fails
@@ -1232,6 +1259,14 @@ export const Editor: React.FC = () => {
         setFileName(node.name);
         setContent(node.content || '');
         setSavedContent(node.content || '');
+        
+        // Update the query cache with local data
+        queryClient.setQueryData(['document', documentId], {
+          id: node.id,
+          name: node.name,
+          content: node.content || '',
+          type: node.type === 'markdown' ? 'text/markdown' : 'text/plain'
+        });
       }
     }
   };
@@ -1266,9 +1301,8 @@ export const Editor: React.FC = () => {
   };
 
   const handleSave = () => {
-    // Simulate saving to backend
-    setSavedContent(content);
-    // Optional: Show a toast or feedback
+    // Use the debounced save function to actually save to the server
+    handleSaveDocument(content);
   };
 
   const handleDownload = () => {
@@ -1325,16 +1359,12 @@ export const Editor: React.FC = () => {
 
   // --- Handlers: Comments ---
   const handlePostComment = () => {
-    if (!newComment.trim()) return;
-    const comment: Comment = {
-      id: Date.now().toString(),
-      author: MOCK_USER.name,
-      content: newComment,
-      timestamp: new Date().toISOString(),
-      avatar: MOCK_USER.avatar
-    };
-    setComments(prev => [...prev, comment]);
-    setNewComment('');
+    if (!newComment.trim() || !activeFileId) return;
+    
+    postCommentMutation.mutate({
+      docId: activeFileId,
+      content: newComment.trim()
+    });
   };
 
   const handleAttachFile = () => {
@@ -1588,6 +1618,17 @@ export const Editor: React.FC = () => {
         queryClient.invalidateQueries({ queryKey: ['documentsList'] });
         setUploadProgress(0);
         setIsUploading(false);
+        
+        // Auto-select the newly uploaded file
+        // We'll set the activeFileId and let the React Query effect handle the content loading
+        setActiveFileId(fullDoc.id);
+        setFileName(fullDoc.name);
+        
+        // Pre-fetch the document to ensure it's cached
+        queryClient.prefetchQuery({
+          queryKey: ['document', fullDoc.id],
+          queryFn: () => Promise.resolve(fullDoc),
+        });
         
         // Show success notification
         setUploadNotification({
@@ -2036,36 +2077,40 @@ export const Editor: React.FC = () => {
              
              {/* Comments List */}
              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {comments.map(comment => (
-                  <div key={comment.id} className="flex gap-3 animate-fade-in-up">
-                     <div className="flex-shrink-0">
-                       {comment.avatar ? (
-                         <img src={comment.avatar} alt={comment.author} className="h-8 w-8 rounded-full bg-gray-100" />
-                       ) : (
-                         <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold">
-                           {comment.author.charAt(0)}
-                         </div>
-                       )}
-                     </div>
-                     <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 text-sm max-w-2xl">
-                        <div className="flex justify-between items-baseline mb-1">
-                          <span className="font-semibold text-gray-900 mr-2">{comment.author}</span>
-                          <span className="text-xs text-gray-400">Today</span>
-                        </div>
-                        <p className="text-gray-600 mb-2">{comment.content}</p>
-                        {comment.attachments && comment.attachments.length > 0 && (
-                          <div className="flex gap-2">
-                             {comment.attachments.map((file, i) => (
-                               <div key={i} className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded text-xs text-gray-500 border border-gray-200">
-                                 <Paperclip className="h-3 w-3" />
-                                 {file}
-                               </div>
-                             ))}
-                          </div>
-                        )}
-                     </div>
+                {isLoadingComments ? (
+                  <div className="flex justify-center items-center h-20">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
                   </div>
-                ))}
+                ) : commentsError ? (
+                  <div className="text-center text-red-500 text-sm">
+                    加载评论失败，请稍后重试
+                  </div>
+                ) : comments.length === 0 ? (
+                  <div className="text-center text-gray-500 text-sm">
+                    暂无评论，来发表第一条评论吧
+                  </div>
+                ) : (
+                  comments.map(comment => (
+                    <div key={comment.id} className="flex gap-3 animate-fade-in-up">
+                       <div className="flex-shrink-0">
+                         {comment.user.avatar ? (
+                           <img src={comment.user.avatar} alt={comment.user.name} className="h-8 w-8 rounded-full bg-gray-100" />
+                         ) : (
+                           <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold">
+                             {comment.user.name.charAt(0)}
+                           </div>
+                         )}
+                       </div>
+                       <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100 text-sm max-w-2xl">
+                          <div className="flex justify-between items-baseline mb-1">
+                            <span className="font-semibold text-gray-900 mr-2">{comment.user.name}</span>
+                            <span className="text-xs text-gray-400">{new Date(comment.createdAt).toLocaleDateString()}</span>
+                          </div>
+                          <p className="text-gray-600 mb-2">{comment.content}</p>
+                       </div>
+                    </div>
+                  ))
+                )}
              </div>
 
              {/* Comment Input */}
@@ -2089,8 +2134,12 @@ export const Editor: React.FC = () => {
                       </button>
                     </div>
                   </div>
-                  <Button size="sm" onClick={handlePostComment} disabled={!newComment.trim()}>
-                    {t.editor.comments.post}
+                  <Button 
+                    size="sm" 
+                    onClick={handlePostComment} 
+                    disabled={!newComment.trim() || postCommentMutation.isPending}
+                  >
+                    {postCommentMutation.isPending ? '发布中...' : t.editor.comments.post}
                   </Button>
                 </div>
              </div>
