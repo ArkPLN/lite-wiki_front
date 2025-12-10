@@ -27,16 +27,13 @@ interface DialogContent{
 
 export const Login: React.FC = () => {  
   const navigate = useNavigate();
-  const [modelShow, setModelShow] = useState(false);
-  // 登录按钮是否禁用
   const [loginDisabled, setLoginDisabled] = useState(false);
-  const [currentDialogId, setCurrentDialogId] = useState<number>(1);
   const { t } = useLanguage();
   // 保存用户的登录数据
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<loginRequest>({
     emailOrPhone: '',
     password: ''
-  })<loginRequest>;
+  });
 
   const [dialogContent, setDialogContent] = useState<DialogContent[]>([
     {
@@ -65,14 +62,21 @@ export const Login: React.FC = () => {
     }
   ]);
 
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [currentDialog, setCurrentDialog] = useState<DialogContent | null>(null);
+
   const handleThirdLogin = (id: number) => {
-    setCurrentDialogId(id);
-    setModelShow(true);
-    setLoginDisabled(true);
+    const dialog = dialogContent.find(item => item.id === id);
+    if (dialog) {
+      setCurrentDialog(dialog);
+      setDialogOpen(true);
+      setLoginDisabled(true);
+    }
   };
 
-  const handleClose = () => {
-    setModelShow(false);
+  const handleDialogClose = () => {
+    setDialogOpen(false);
+    setCurrentDialog(null);
     setLoginDisabled(false);
   };
 
@@ -85,7 +89,7 @@ export const Login: React.FC = () => {
   // 创建登录函数供 useMutation 使用
   const loginMutation = useMutation({
     mutationFn: async (loginData: loginRequest) => {
-      const response = await axios.post('api/v1/auth/login', loginData, {
+      const response = await axios.post('/api/v1/auth/login', loginData, {
         headers: {
           'Content-Type': 'application/json'
         }
@@ -111,7 +115,7 @@ export const Login: React.FC = () => {
       // 延迟后跳转到仪表板
       setTimeout(() => {
         handleLoginSuccess();
-      }, 500);
+      }, 1500);
     },
     onError: (error: any) => {
       console.error('登录错误:', error);
@@ -132,22 +136,29 @@ export const Login: React.FC = () => {
           errorMessage = data?.message || '用户不存在';
         } else if (status === 429) {
           errorMessage = '登录尝试次数过多，请稍后再试';
+        } else if (status >= 500) {
+          errorMessage = '服务器错误，请稍后再试';
         } else {
-          errorMessage = data?.message || `服务器错误 (${status})`;
+          errorMessage = data?.message || `请求失败 (${status})`;
         }
       } else if (error.request) {
         // 请求已发出但没有收到响应
         errorMessage = '无法连接到服务器，请检查网络连接';
+      } else {
+        // 其他错误
+        errorMessage = error.message || '未知错误，请稍后再试';
       }
       
-      // 更新对话框内容显示具体错误
-      const updatedDialogContent = dialogContent.map(item => 
-        item.id === 4 ? { ...item, content: errorMessage } : item
-      );
-      setDialogContent(updatedDialogContent);
+      // 创建错误对话框
+      const errorDialog: DialogContent = {
+        id: 4,
+        title: '登录错误',
+        content: errorMessage,
+        buttonText: '确定'
+      };
       
-      // 显示错误消息
-      handleThirdLogin(4);
+      setCurrentDialog(errorDialog);
+      setDialogOpen(true);
     },
     onSettled: () => {
       // 无论成功或失败，都要在请求结束后启用登录按钮
@@ -166,10 +177,7 @@ export const Login: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // 使用 useMutation 进行登录
-    loginMutation.mutate({
-      emailOrPhone: formData.email,
-      password: formData.password
-    } as loginRequest);
+    loginMutation.mutate(formData);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -237,9 +245,9 @@ export const Login: React.FC = () => {
               <Input
                 label={t.common.email}
                 type="email"
-                name="email"
+                name="emailOrPhone"
                 placeholder="you@example.com"
-                value={formData.email}
+                value={formData.emailOrPhone}
                 onChange={handleChange}
                 required
                 className="transition-all duration-200 group-hover:border-primary-300"
@@ -302,6 +310,34 @@ export const Login: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Dialog for notifications */}
+      <Dialog
+        open={dialogOpen}
+        onClose={handleDialogClose}
+        aria-labelledby="alert-dialog-title"
+        aria-describedby="alert-dialog-description"
+        maxWidth="sm"
+        fullWidth
+      >
+        {currentDialog && (
+          <>
+            <DialogTitle id="alert-dialog-title">
+              {currentDialog.title}
+            </DialogTitle>
+            <DialogContent>
+              <DialogContentText id="alert-dialog-description">
+                {currentDialog.content}
+              </DialogContentText>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleDialogClose} autoFocus>
+                {currentDialog.buttonText}
+              </Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
     </div>
   );
 };

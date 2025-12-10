@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Emoji } from '@vavt/rt-extension';
 import axios from 'axios';
 import { 
   Folder, 
@@ -58,6 +57,7 @@ import useUserStore from '@/store';
 import { CreateDocumentRequest, Document, ModifyDocumentRequest } from '@/types/docs/doc';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { getDocumentsList, getDocumentById, uploadFile } from '@/reqapi/docs';
+import { deleteFile } from '@/reqapi/recycle';
 import { CircularProgress } from '@mui/material';
 
 // Import MdEditorRt components
@@ -310,6 +310,7 @@ interface FileTreeItemProps {
   isBatchMode?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
+  isDeleting?: boolean;
 }
 
 const FileTreeItem: React.FC<FileTreeItemProps> = ({ 
@@ -324,7 +325,8 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
   onDelete,
   isBatchMode,
   selectedIds,
-  onToggleSelect
+  onToggleSelect,
+  isDeleting
 }) => {
   const isOpen = expandedIds.has(node.id);
   const isActive = activeId === node.id;
@@ -404,10 +406,15 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
             </button>
             <button 
               onClick={(e) => { e.stopPropagation(); onDelete(node.id); }}
-              className="p-1 hover:bg-gray-200 rounded text-gray-500 hover:text-red-600"
+              className="p-1 hover:bg-gray-200 rounded text-gray-500 hover:text-red-600 disabled:text-gray-300 disabled:cursor-not-allowed"
               title="Delete"
+              disabled={isDeleting}
             >
-              <Trash2 className="h-3 w-3" />
+              {isDeleting ? (
+                <CircularProgress size={12} thickness={3} />
+              ) : (
+                <Trash2 className="h-3 w-3" />
+              )}
             </button>
           </div>
         )}
@@ -1026,6 +1033,20 @@ export const Editor: React.FC = () => {
      }
    });
 
+   // --- React Query: Document Deletion Mutation ---
+   const deleteDocumentMutation = useMutation({
+     mutationFn: deleteFile,
+     onSuccess: (response) => {
+       console.log('Document moved to recycle bin successfully:', response);
+       // Invalidate and refetch documents list to update the UI
+       queryClient.invalidateQueries({ queryKey: ['documentsList'] });
+     },
+     onError: (error: any) => {
+       console.error('Failed to move document to recycle bin:', error);
+       alert(`Failed to delete document: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
+     }
+   });
+
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
    // --- Save Document Handler ---
@@ -1305,19 +1326,54 @@ export const Editor: React.FC = () => {
       confirmText: "删除",
       cancelText: "取消",
       onConfirm: () => {
-        const newFiles = deleteNodeRecursive(files, id);
-        setFiles(newFiles);
-        
-        // Check if active file still exists in the new tree
-        const isActiveFileStillPresent = activeFileId && findNodeById(newFiles, activeFileId);
-        
-        if (activeFileId && !isActiveFileStillPresent) {
-          // Active file was deleted (or its parent was deleted)
-          setActiveFileId('');
-          setFileName('');
-          setContent('');
-          setSavedContent('');
-        }
+        // Call the delete API to move the document to recycle bin
+        deleteDocumentMutation.mutate(id, {
+          onSuccess: () => {
+            // After successful API call, update local state
+            const newFiles = deleteNodeRecursive(files, id);
+            setFiles(newFiles);
+            
+            // Check if active file still exists in the new tree
+            const isActiveFileStillPresent = activeFileId && findNodeById(newFiles, activeFileId);
+            
+            if (activeFileId && !isActiveFileStillPresent) {
+              // Active file was deleted (or its parent was deleted)
+              setActiveFileId('');
+              setFileName('');
+              setContent('');
+              setSavedContent('');
+            }
+          }
+        });
+      }
+    });
+  };
+
+  // Handle delete from the editor toolbar
+  const handleDelete = () => {
+    if (!activeFileId) return;
+    
+    showConfirmDialog({
+      title: "删除确认",
+      message: `确定要将文件 "${fileName}" 移动到回收站吗？`,
+      type: "warning",
+      confirmText: "删除",
+      cancelText: "取消",
+      onConfirm: () => {
+        // Call the delete API to move the document to recycle bin
+        deleteDocumentMutation.mutate(activeFileId, {
+          onSuccess: () => {
+            // After successful API call, update local state
+            const newFiles = deleteNodeRecursive(files, activeFileId);
+            setFiles(newFiles);
+            
+            // Reset editor state since the active file was deleted
+            setActiveFileId('');
+            setFileName('');
+            setContent('');
+            setSavedContent('');
+          }
+        });
       }
     });
   };
@@ -1344,17 +1400,41 @@ export const Editor: React.FC = () => {
       confirmText: "删除",
       cancelText: "取消",
       onConfirm: () => {
-        // Check if active file is being deleted
-        if (selectedIds.has(activeFileId)) {
-          setActiveFileId('');
-          setFileName('');
-          setContent('');
-          setSavedContent('');
-        }
+        // Create an array of promises for all delete operations
+        const deletePromises = Array.from(selectedIds).map(id => 
+          deleteFile(id as string).catch(error => {
+            console.error(`Failed to delete document ${id}:`, error);
+            return { id: id as string, error: true, message: error?.response?.data?.message || error?.message || 'Unknown error' };
+          })
+        );
         
-        setFiles(prev => batchDeleteRecursive(prev, selectedIds));
-        setSelectedIds(new Set());
-        setIsBatchMode(false);
+        // Execute all delete operations
+        Promise.all(deletePromises).then(results => {
+          // Check if any operations failed
+          const failedOperations = results.filter((result: any) => result && result.error);
+          
+          if (failedOperations.length > 0) {
+            console.error(`${failedOperations.length} documents failed to delete`);
+            alert(`${failedOperations.length} 个文档删除失败，请重试`);
+          } else {
+            console.log('All documents moved to recycle bin successfully');
+            // Invalidate and refetch documents list to update the UI
+            queryClient.invalidateQueries({ queryKey: ['documentsList'] });
+            
+            // Check if active file is being deleted
+            if (selectedIds.has(activeFileId)) {
+              setActiveFileId('');
+              setFileName('');
+              setContent('');
+              setSavedContent('');
+            }
+            
+            // Update local state
+            setFiles(prev => batchDeleteRecursive(prev, selectedIds));
+            setSelectedIds(new Set());
+            setIsBatchMode(false);
+          }
+        });
       }
     });
   };
@@ -1580,6 +1660,7 @@ export const Editor: React.FC = () => {
               isBatchMode={isBatchMode}
               selectedIds={selectedIds}
               onToggleSelect={handleToggleSelect}
+              isDeleting={deleteDocumentMutation.isPending}
             />
           ))}
           
@@ -1690,10 +1771,14 @@ export const Editor: React.FC = () => {
               <div className="flex gap-2">
                 <button 
                   onClick={handleBatchDelete}
-                  disabled={selectedIds.size === 0}
+                  disabled={selectedIds.size === 0 || deleteDocumentMutation.isPending}
                   className="flex-1 py-1.5 px-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-medium flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  {deleteDocumentMutation.isPending ? (
+                    <CircularProgress size={14} thickness={3} />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
                   {t.common.delete}
                 </button>
                 <button 
@@ -1749,6 +1834,22 @@ export const Editor: React.FC = () => {
                 disabled={!activeFileId}
               >
                 <Download className="h-4 w-4" />
+              </button>
+              <button 
+                onClick={handleDelete}
+                className={`p-2 rounded-lg transition-colors flex items-center gap-2 ${
+                  deleteDocumentMutation.isPending 
+                    ? 'text-gray-400 cursor-not-allowed' 
+                    : 'text-red-500 hover:text-red-900 hover:bg-red-50'
+                }`} 
+                title="Delete"
+                disabled={!activeFileId || deleteDocumentMutation.isPending}
+              >
+                {deleteDocumentMutation.isPending ? (
+                  <CircularProgress size={16} thickness={4} />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
               </button>
               <div className="h-4 w-px bg-gray-300 mx-1" />
               {/* Save Status */}
