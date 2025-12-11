@@ -4,164 +4,143 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Lite-Wiki** is a lightweight, intelligent knowledge base designed for student groups and startup teams. It's a React-based web application with AI-powered features for document management, team collaboration, and knowledge organization.
+**Lite-Wiki** is a lightweight, intelligent knowledge base for student groups and startup teams. Built with React and TypeScript, featuring AI-powered document management, team collaboration, and knowledge organization.
 
 ### Tech Stack
-- **Framework**: React 18.2.0 with TypeScript
-- **Build Tool**: Vite 6.2.0
-- **Routing**: React Router DOM 6.23.1
-- **UI Icons**: Lucide React
-- **Markdown**: react-markdown with remark-gfm
-- **API**: Integrates with Google Gemini AI
+- **Frontend**: React 18.2.0, TypeScript, Vite 6.2.0
+- **Data Fetching**: TanStack React Query (@tanstack/react-query)
+- **State Management**: Zustand
+- **UI Framework**: Material UI (@mui/material), TailwindCSS
+- **Markdown**: md-editor-rt, react-markdown, remark-gfm
+- **Routing**: React Router DOM 6.23.1 (hash-based)
+- **AI Integration**: Google Gemini API
 
 ## Development Commands
 
-### Installation
+### Setup
 ```bash
 pnpm install  # or npm install
 ```
 
 ### Development
 ```bash
-npm run dev   # Start dev server on port 3000
+npm run dev   # Start dev server on port 3001
 ```
 
-### Building
+### Build & Preview
 ```bash
 npm run build   # Production build
-npm run preview # Preview production build locally
+npm run preview # Preview build on port 4173
 ```
 
-### Environment Setup
-Create a `.env.local` file in the root directory with:
+### Environment Variables
+Create `.env.local`:
 ```env
 GEMINI_API_KEY=your_api_key_here
+SERVER_API_URL=http://localhost:8000  # For API proxy
 ```
 
-The API key is injected into the app via Vite's `define` configuration in `vite.config.ts`.
+API key is injected via Vite's `define` config in `vite.config.ts:24-26`.
 
-## Project Architecture
+## Architecture
 
-### Directory Structure
-```
-/
-├── App.tsx                 # Main app component with routing configuration
-├── index.tsx              # Application entry point
-├── constants.ts           # App constants and routes definition
-├── types.ts               # TypeScript type definitions
-├── vite.config.ts         # Vite configuration
-├── tsconfig.json          # TypeScript configuration
-├── components/
-│   ├── layout/            # Layout components (Navbar, Footer, DashboardLayout)
-│   ├── dashboard/         # Dashboard-specific components
-│   └── ui/                # Reusable UI components (Button, Input)
-├── pages/
-│   ├── Portal.tsx         # Landing page
-│   ├── Login.tsx          # Authentication pages
-│   ├── Register.tsx
-│   ├── AnonymousLogin.tsx
-│   ├── ForgotPassword.tsx
-│   └── dashboard/         # Dashboard pages
-│       ├── Overview.tsx
-│       ├── Editor.tsx     # Markdown editor with versioning
-│       ├── Community.tsx  # Community hub
-│       ├── KnowledgeCenter.tsx  # AI knowledge assistant
-│       ├── Team.tsx       # Team space with sub-pages
-│       ├── Favorites.tsx
-│       ├── Recent.tsx
-│       ├── Trash.tsx
-│       ├── Notifications.tsx
-│       └── UserProfile.tsx
-├── lib/
-│   └── i18n.tsx           # Internationalization (zh/en)
-└── assets/
-    └── icon.ico
-```
+### Core Structure
 
-### Routing Architecture
+**Routing** (`App.tsx:30-127`): Uses `createHashRouter` with nested dashboard routes. The app wraps the router with:
+- `QueryClientProvider` - TanStack Query client
+- `LanguageProvider` - i18n context
 
-The app uses **Hash-based routing** via `createHashRouter`. Main routes:
-- `/` - Portal (landing page)
-- `/login`, `/register`, `/anonymous-login`, `/forgot-password` - Auth pages
-- `/dashboard/*` - Dashboard with nested routes for:
-  - `/overview` - Dashboard home
-  - `/documents` - Document editor
-  - `/community` - Community discussions
-  - `/knowledge` - AI assistant
-  - `/team` - Team hub with nested routes (forum, wiki, directory, management)
-  - `/favorites`, `/recent`, `/trash` - Library views
-  - `/profile`, `/notifications` - User management
+**Key Files**:
+- `constants.ts` - Route definitions (ROUTES object) and mock data
+- `types.ts` - Centralized TypeScript interfaces
+- `lib/queryClient.ts` - TanStack Query configuration (5min stale time, 1 retry)
+- `lib/i18n.tsx` - Internationalization (Chinese default, localStorage persistence)
+- `vite.config.ts` - Build config, dev server (port 3001), API proxy
 
-### Key Architecture Patterns
+### State Management
 
-1. **Language Context** (`lib/i18n.tsx:1367-1398`): Provides internationalization support with React Context and localStorage persistence. Default language is Chinese (`zh`).
+- **TanStack Query**: Server state (caching, refetching)
+- **Zustand**: Client state management
+- **React Context**: Language switching
+- **Mock Data**: `MOCK_USER` in `constants.ts:30-36`
 
-2. **Type Definitions** (`types.ts`): Centralized TypeScript interfaces for:
-   - File system types (FileNode, FileVersion)
-   - User and team management (User, TeamMember, TeamPost)
-   - Community features (CommunityTopic, CommunityPost)
-   - AI messaging (AIMessage)
-   - Notifications (NotificationItem)
+### Version Control System
 
-3. **Version Control**: Documents support versioning with states: `working`, `locked`, `archived`, `deprecated` (see `types.ts:4`)
+Documents support versioning with states (`types.ts:4`):
+- `working` - Active editing
+- `locked` - Read-only
+- `archived` - Stored but not active
+- `deprecated` - Superseded
 
-4. **Mock Data**: Uses `MOCK_USER` from `constants.ts:30-36` for demonstration purposes
+### Authentication
 
-### Development Workflow
+Multiple auth flows (`pages/`):
+- Email/password login
+- Anonymous/guest access
+- Phone registration with verification
+- Role-based access: `admin`, `user`, `team_leader`
 
-- **Path Alias**: Use `@/` to reference root directory (configured in `tsconfig.json:21-24` and `vite.config.ts:18-20`)
-- **Type Safety**: Full TypeScript support with strict configuration
-- **Component Organization**: Feature-based structure with shared UI components
-- **State Management**: React hooks and Context API (for i18n)
+### Team Features
 
-## Common Development Tasks
+Team hub (`/dashboard/team`) with nested routes:
+- `/forum` - Team discussions
+- `/wiki` - Team knowledge base
+- `/directory` - Member directory
+- `/management` - Admin controls
 
-### Adding a New Page
-1. Create component in appropriate `pages/` subdirectory
-2. Add route definition to `constants.ts` (ROUTES object)
-3. Register route in `App.tsx` using `createHashRouter`
+### Internationalization
 
-### Working with Markdown
-- The editor supports Markdown with live preview (see `Editor.tsx`)
-- Use `react-markdown` and `remark-gfm` for rendering
-- Comments and collaboration features built-in
+Default language is Chinese (`zh`), supports English (`en`). Language preference persists in localStorage. All UI text is in `lib/i18n.tsx` with the `TranslationSchema` interface.
 
-### Adding Translations
-- Edit `lib/i18n.tsx` translations object
-- Add keys to `TranslationSchema` interface
-- Both English and Chinese translations required
-- Language preference saved in localStorage
+### Path Aliases
 
-### AI Integration
-- Gemini API key required in `.env.local`
-- Currently used in Knowledge Center and AI assistant features
-- API key injected via Vite's `define` config (see `vite.config.ts:14-15`)
-
-## Important Notes
-
-1. **Anonymous Login**: Supports guest access without registration (see `AnonymousLogin.tsx`)
-2. **Role-Based Access**: User roles include `admin`, `user`, `team_leader`
-3. **Team Collaboration**: Team features include forums, wikis, member directory, and management
-4. **Internationalization**: Default language is Chinese (zh), supports English (en)
-5. **No Testing**: No test configuration found in package.json
-6. **No Linting**: No ESLint or Prettier configuration found
+`@/*` maps to project root (configured in `tsconfig.json:21-24` and `vite.config.ts:29-31`).
 
 ## Dependencies
 
-Key runtime dependencies:
-- `react`, `react-dom` - Core React framework
-- `react-router-dom` - Routing
-- `react-markdown`, `remark-gfm` - Markdown rendering
-- `lucide-react` - UI icons
+**Core**:
+- `react`, `react-dom` - Framework
+- `react-router-dom` - Hash-based routing
+- `@tanstack/react-query` - Data fetching
+- `zustand` - State management
+- `@mui/material` - UI components
+- `tailwindcss` - Styling
 
-Key dev dependencies:
-- `vite` - Build tool
-- `@vitejs/plugin-react` - React plugin for Vite
-- `typescript` - TypeScript compiler
-- `@types/node` - Node.js types
+**Markdown & Editor**:
+- `md-editor-rt` - Rich text editor
+- `react-markdown` + `remark-gfm` - Rendering
 
-## Environment Configuration
+**Other**:
+- `lucide-react` - Icons
+- `axios` - HTTP client
+- `jsonwebtoken` - Auth tokens
 
-- **Dev Server**: Runs on `http://0.0.0.0:3000` (see `vite.config.ts:8-11`)
-- **Port**: 3000 (configurable in vite.config.ts)
-- **API Key**: Gemini API key must be set in `.env.local` as `GEMINI_API_KEY`
+## Build Configuration
+
+- **Dev Server**: `0.0.0.0:3001` with HMR
+- **Build Tool**: Vite with SWC plugin (`@vitejs/plugin-react-swc`)
+- **API Proxy**: `/api` requests forward to `SERVER_API_URL`
+- **Module**: ESNext with bundle resolution
+- **No ESLint/Prettier**: No linting configuration found
+
+## Development Patterns
+
+### Adding Routes
+1. Define route in `constants.ts` (ROUTES object)
+2. Import component in `App.tsx`
+3. Add route configuration to `createHashRouter` children array
+
+### Working with Data
+- Use TanStack Query hooks for server state
+- Configure in `lib/queryClient.ts`
+- Default: 5min stale time, 1 retry
+
+### Internationalization
+- Add keys to `TranslationSchema` interface
+- Update translations object in `lib/i18n.tsx`
+- Requires both `zh` and `en` values
+
+### Environment
+- Dev server port: 3001 (see `vite.config.ts:8-10`)
+- API proxy configured in `vite.config.ts:15-21`
+- Gemini API key via `GEMINI_API_KEY` env var

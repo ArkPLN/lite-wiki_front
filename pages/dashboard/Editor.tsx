@@ -1672,7 +1672,7 @@ export const Editor: React.FC = () => {
         
         setUploadNotification({
           show: true,
-          type: 'warning',
+          type: 'success',
           message: `文件 "${uploadedDoc.name}" 上传成功，但无法获取内容`
         });
       }

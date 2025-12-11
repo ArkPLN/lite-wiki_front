@@ -40,7 +40,7 @@ export interface DeleteChatSessionRespond{
 }
 
 export interface ChatSessionHistory{
-    message:ChatSession[];
+    message: AIMessage[];
     userId:string;
     id: ChatSessionId;
     title: string;
@@ -48,5 +48,11 @@ export interface ChatSessionHistory{
     relatedId: string|null;
     createdAt: string;
     updatedAt: string;
+}
 
+export interface AIMessage {
+    id: string;
+    role: 'user' | 'ai';
+    content: string;
+    timestamp: Date;
 }
