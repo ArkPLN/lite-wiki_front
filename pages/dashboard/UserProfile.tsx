@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { MOCK_USER } from '@/constants';
-import { Mail, Shield, User as UserIcon, Camera, Smartphone, Edit2, X, Lock, CheckCircle } from 'lucide-react';
+import { Mail, Shield, User as UserIcon, Camera, Smartphone, Edit2, X, Lock, CheckCircle, AlertTriangle, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useLanguage } from '@/lib/i18n';
@@ -19,12 +19,15 @@ export const UserProfile: React.FC = () => {
   const [show2FA, setShow2FA] = useState(false);
   const [twoFACode, setTwoFACode] = useState('');
 
+  // Delete Account Modal State
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
   // Form State
   const [formData, setFormData] = useState<userProfile>({
     name: MOCK_USER.name,
     email: MOCK_USER.email,
     role: MOCK_USER.role,
-    phoneNumber: '13800000000', // Default placeholder
+    phone: '13800000000', // Default placeholder
     nickname: MOCK_USER.name, // Default placeholder
     bio: 'Senior developer passionate about React and AI agents.', // Default placeholder
     password: '', // Should represent new password
@@ -312,6 +315,19 @@ export const UserProfile: React.FC = () => {
                     <span className="text-sm font-medium text-gray-700">{t.profile.emailNotifications}</span>
                     <input type="checkbox" defaultChecked disabled={!isEditing} className="h-4 w-4 text-primary-600 rounded border-gray-300 disabled:opacity-50" />
                   </div>
+                  
+                  {/* Delete Account Button */}
+                  <div className="pt-4">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setShowDeleteModal(true)}
+                      className="w-full flex items-center justify-center gap-2 text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {t.profile.deleteAccount}
+                    </Button>
+                  </div>
                 </div>
 
                 {isEditing && (
@@ -364,6 +380,51 @@ export const UserProfile: React.FC = () => {
                 >
                   {t.common.cancel}
                 </button>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Account Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowDeleteModal(false)}></div>
+          <div className="relative bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full animate-fade-in-up">
+             <div className="flex flex-col items-center text-center mb-6">
+                <div className="h-14 w-14 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-4">
+                   <AlertTriangle className="h-7 w-7" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">{t.profile.deleteAccountTitle}</h3>
+                <p className="text-sm text-gray-500 mt-2">{t.profile.deleteAccountDesc}</p>
+             </div>
+
+             <div className="space-y-4">
+                <div className="bg-red-50 p-3 rounded-lg text-center text-sm border border-red-100">
+                   <p className="text-red-600 font-medium">{t.profile.deleteAccountWarning}</p>
+                </div>
+
+                <div className="flex gap-3">
+                  <Button 
+                    variant="outline" 
+                    fullWidth 
+                    onClick={() => {
+                      // 伪UI，不发送真实请求
+                      alert(t.profile.deleteAccountSuccess);
+                      setShowDeleteModal(false);
+                    }}
+                    className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
+                  >
+                    {t.profile.confirmDelete}
+                  </Button>
+                  
+                  <Button 
+                    variant="secondary" 
+                    fullWidth 
+                    onClick={() => setShowDeleteModal(false)}
+                  >
+                    {t.common.cancel}
+                  </Button>
+                </div>
              </div>
           </div>
         </div>

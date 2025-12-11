@@ -958,6 +958,43 @@ export const Editor: React.FC = () => {
     retry: 2,
   });
 
+  // --- Effect: Fetch and update file nodes on component mount and unmount ---
+  useEffect(() => {
+    // Function to fetch documents and update global state
+    const fetchAndUpdateFileNodes = async () => {
+      try {
+        const documentsList = await getDocumentsList();
+        
+        if (documentsList && Array.isArray(documentsList)) {
+          // Convert documents to file nodes
+          const serverFileNodes: FileNode[] = documentsList.map((doc: Document) => ({
+            id: doc.id,
+            name: doc.name,
+            type: doc.type === 'text/markdown' ? 'markdown' : 'text',
+            content: doc.content || '',
+            currentVersion: 'V1.0',
+            versions: [INITIAL_VERSIONS[2]], // Use mock version data for now
+            inKnowledgeBase: doc.inKnowledgeBase || false
+          }));
+
+          // Update global state with the latest file nodes
+          useUserStore.getState().setFileNodes(serverFileNodes);
+        }
+      } catch (error) {
+        console.error('Failed to fetch documents on component mount:', error);
+      }
+    };
+
+    // Fetch documents when component mounts
+    fetchAndUpdateFileNodes();
+
+    // Clean up function when component unmounts
+    return () => {
+      // Fetch documents again when component unmounts to ensure global state is up-to-date
+      fetchAndUpdateFileNodes();
+    };
+  }, []); // Empty dependency array ensures this runs only on mount and unmount
+
   // --- Effect: Sync documents list to files state ---
   useEffect(() => {
     if (documentsList && Array.isArray(documentsList)) {

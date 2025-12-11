@@ -400,6 +400,12 @@ export interface TranslationSchema {
     twoFaDesc: string;
     verify: string;
     verificationSent: string;
+    deleteAccount: string;
+    deleteAccountTitle: string;
+    deleteAccountDesc: string;
+    deleteAccountWarning: string;
+    deleteAccountSuccess: string;
+    confirmDelete: string;
   };
   hero: {
     newFeature: string;
@@ -840,6 +846,12 @@ export const translations: Record<Language, TranslationSchema> = {
       twoFaDesc: 'To reset your password, please enter the code sent to your phone.',
       verify: 'Verify',
       verificationSent: 'Code sent to',
+      deleteAccount: 'Delete Account',
+      deleteAccountTitle: 'Delete Account',
+      deleteAccountDesc: 'This action cannot be undone. This will permanently delete your account and remove all your data from our servers.',
+      deleteAccountWarning: 'Warning: All your data will be permanently deleted and cannot be recovered.',
+      deleteAccountSuccess: 'Your account has been successfully deleted.',
+      confirmDelete: 'Delete My Account',
     },
     hero: {
       newFeature: 'New: AI-Powered Document Assistance',
@@ -1288,7 +1300,13 @@ export const translations: Record<Language, TranslationSchema> = {
       twoFaTitle: '需要 2FA 验证',
       twoFaDesc: '为了重置您的密码，请输入发送到您手机的验证码。',
       verify: '验证并保存',
-      verificationSent: '验证码已发送至',
+      verificationSent: '验证码已发送到您的手机',
+      deleteAccount: '删除账户',
+      deleteAccountTitle: '删除账户',
+      deleteAccountDesc: '此操作无法撤销。这将永久删除您的账户并从我们的服务器中移除您的所有数据。',
+      deleteAccountWarning: '警告：您的所有数据将被永久删除，无法恢复。',
+      deleteAccountSuccess: '您的账户已成功删除。',
+      confirmDelete: '删除我的账户',
     },
     hero: {
       newFeature: '新功能：AI 驱动的文档助手',
