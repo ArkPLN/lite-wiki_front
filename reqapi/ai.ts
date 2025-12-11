@@ -88,5 +88,11 @@ export const sendMessageToSession = async (id: ChatSessionId, messageRequest: Ch
     throw new Error(`HTTP error! status: ${response.status}`);
   }
   
+  // 确保返回的响应对象具有正确的流式读取能力
+  // 检查response.body是否存在且可读
+  if (!response.body) {
+    throw new Error('Response body is null or not readable');
+  }
+  
   return response;
 }

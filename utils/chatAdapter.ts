@@ -87,6 +87,22 @@ export const processEventStream = async (
     }
 
     let result = '';
+    let isResolved = false;
+    
+    // 防止多次调用resolve或reject
+    const finalResolve = (value: string) => {
+      if (!isResolved) {
+        isResolved = true;
+        resolve(value);
+      }
+    };
+    
+    const finalReject = (error: Error) => {
+      if (!isResolved) {
+        isResolved = true;
+        reject(error);
+      }
+    };
     
     try {
       // 检查是否是浏览器环境的fetch响应
@@ -107,7 +123,7 @@ export const processEventStream = async (
               if (line.startsWith('data: ')) {
                 const data = line.substring(6);
                 if (data.trim() === '[DONE]') {
-                  resolve(result);
+                  finalResolve(result);
                   return;
                 }
                 try {
@@ -126,9 +142,9 @@ export const processEventStream = async (
               }
             }
           }
-          resolve(result);
+          finalResolve(result);
         } catch (error) {
-          reject(error);
+          finalReject(error as Error);
         } finally {
           reader.releaseLock();
         }
@@ -142,7 +158,7 @@ export const processEventStream = async (
             if (line.startsWith('data: ')) {
               const data = line.substring(6);
               if (data.trim() === '[DONE]') {
-                resolve(result);
+                finalResolve(result);
                 return;
               }
               try {
@@ -163,17 +179,17 @@ export const processEventStream = async (
         });
         
         response.on('end', () => {
-          resolve(result);
+          finalResolve(result);
         });
         
         response.on('error', (error: Error) => {
-          reject(error);
+          finalReject(error);
         });
       } else {
-        reject(new Error('Unsupported response type for streaming'));
+        finalReject(new Error('Unsupported response type for streaming'));
       }
     } catch (error) {
-      reject(new Error(`Failed to process stream: ${error}`));
+      finalReject(new Error(`Failed to process stream: ${error}`));
     }
   });
 };

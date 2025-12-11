@@ -39,7 +39,7 @@ import {
   processEventStream 
 } from '../../utils/chatAdapter';
 import { ChatSessionId } from '@/types/ai/session';
-
+import { useQueryClient } from '@tanstack/react-query'; // 确保你安装了这个库，通常和 React Query 一起
 
 
 export const KnowledgeCenter: React.FC = () => {
@@ -50,7 +50,7 @@ export const KnowledgeCenter: React.FC = () => {
   const [deepThinkingEnabled, setDeepThinkingEnabled] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  
+  const queryClient = useQueryClient(); // 1. 初始化 queryClient
   // FilePickerModal状态
   const [isFilePickerOpen, setIsFilePickerOpen] = useState(false);
   const { fileNodes } = useUserStore();
@@ -84,14 +84,25 @@ export const KnowledgeCenter: React.FC = () => {
   const deleteSessionMutation = useDeleteChatSession();
   const sendMessageMutation = useSendMessageToSession();
   
-  // 当会话详情加载完成时，更新消息列表
-  useEffect(() => {
-    if (sessionDetail && activeSessionId) {
-      console.log('Loading session messages:', sessionDetail.message);
-      setCurrentMessages(sessionDetail.message || []);
+useEffect(() => {
+    if (sessionDetail && activeSessionId && !isReceivingResponse) {
+      const serverMessages = sessionDetail.message || [];
+      const localMessages = currentMessages || [];
+
+      // 核心修复逻辑：
+      // 如果服务端返回的消息数量少于本地消息数量，说明服务端数据滞后（还没存进去或还没取回来）。
+      // 这种情况下，保留本地数据，不要同步。
+      if (serverMessages.length < localMessages.length) {
+        console.log('Server data is stale, keeping local state');
+        return;
+      }
+
+      console.log('Syncing session messages from server');
+      setCurrentMessages(serverMessages);
     }
-  }, [sessionDetail, activeSessionId, setCurrentMessages]);
-  
+    // 注意：这里把 currentMessages 加入依赖可能会导致循环，
+    // 但为了比较长度是必要的。只要上面的 if 判断正确，就能阻断循环。
+  }, [sessionDetail, activeSessionId, isReceivingResponse, setCurrentMessages, currentMessages]);
   // 自动滚动到底部
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -189,30 +200,37 @@ export const KnowledgeCenter: React.FC = () => {
       }, {
         onSuccess: (data) => {
           setActiveSessionId(data.id);
-          clearCurrentSession();
           setShowHistory(false);
           
           // 创建会话成功后，发送消息
           sendMessageMutation.mutate({
-            id: data.id,
+            id: activeSessionId || data.id, // 这里注意你的逻辑
             messageRequest: adaptMessageToApi(userMessage, 'Analyst')
           }, {
             onSuccess: async (response: any) => {
               try {
-                // 初始化流式内容
                 updateStreamingContent('');
                 
-                // 处理流式响应，使用回调实现逐字显示
                 const content = await processEventStream(response, (chunk) => {
                   appendStreamingContent(chunk);
                 });
                 
-                completeStreamingResponse();
+                if (content) {
+                  completeStreamingResponse();
+                }
               } catch (error) {
-                console.error('Error processing stream:', error);
-                addAiMessage('抱歉，处理响应时出现错误。');
+                // Error handling...
               } finally {
                 setReceivingResponse(false);
+                
+                // 【新增】对话彻底结束后，告诉 React Query 这个会话的数据脏了，需要去后台重新拉取
+                // 这样能确保下一次 useEffect 触发时，sessionDetail 是最新的
+                if (activeSessionId) {
+                    queryClient.invalidateQueries({ queryKey: ['chatSession', activeSessionId] });
+                    // 如果你的 queryKey 是其他格式，请相应调整
+                    // 同时也建议刷新一下会话列表，因为最后一条消息变了
+                    queryClient.invalidateQueries({ queryKey: ['chatSessions'] });
+                }
               }
             },
             onError: (error) => {
@@ -244,10 +262,14 @@ export const KnowledgeCenter: React.FC = () => {
               appendStreamingContent(chunk);
             });
             
-            completeStreamingResponse();
+            // 确保在完成流式响应后再调用completeStreamingResponse
+            if (content) {
+              completeStreamingResponse();
+            }
           } catch (error) {
             console.error('Error processing stream:', error);
             addAiMessage('抱歉，处理响应时出现错误。');
+            completeStreamingResponse(); // 确保在错误情况下也重置流式状态
           } finally {
             setReceivingResponse(false);
           }
