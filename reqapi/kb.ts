@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { type AxiosRequestConfig } from 'axios';
 import useUserStore from '@/store';
-import { KnowledgeBaseDocResponse, UpdateKnowledgeBaseConfigRequest ,KnowledgeBase, GetKnowledgeBaseResponse} from '@/types/kb/kb';
+import { KnowledgeBaseDocResponse, UpdateKnowledgeBaseConfigRequest ,KnowledgeBase, GetKnowledgeBaseResponse, KnowledgeBaseDocList} from '@/types/kb/kb';
 
 export const addDocumentToKnowledgeBase = async (docId:string) :Promise<KnowledgeBaseDocResponse> =>{
     const requestConfig:AxiosRequestConfig= {
@@ -62,5 +62,18 @@ export const updateKnowledgeBaseConfig = async (config:UpdateKnowledgeBaseConfig
     }
     const response = await axios(requestConfig);
     return response.data as KnowledgeBase;
+}
+
+export const getKnowledgeBaseDocs = async () :Promise<KnowledgeBaseDocList> =>{
+    const requestConfig:AxiosRequestConfig= {
+        method:'GET',
+        url:`/api/v1/knowledge-base/documents`,
+        headers:{
+            'Authorization': useUserStore.getState().bearerToken || localStorage.getItem('token') || '',
+            'Content-Type':'application/json',
+        },
+    }
+    const response = await axios(requestConfig);
+    return response.data as KnowledgeBaseDocList;
 }
 

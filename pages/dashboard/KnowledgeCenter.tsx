@@ -13,11 +13,16 @@ import {
   Clock,
   Plus,
   PieChart,
-  File
+  File,
+  CheckCircle,
+  XCircle,
+  Loader2
 } from 'lucide-react';
 import { useLanguage } from '../../lib/i18n';
 import { FilePickerModal } from '../../components/dashboard/SharedModals';
 import useUserStore from '../../store/index';
+import { useKnowledgeBase, useAddDocumentToKnowledgeBase, useRemoveDocumentFromKnowledgeBase, useKnowledgeBaseDocs } from '../../hooks/useKnowledgeBase';
+import { KnowledgeBaseDoc } from '../../types/kb/kb';
 
 interface Message {
   id: string;
@@ -55,8 +60,11 @@ export const KnowledgeCenter: React.FC = () => {
   const [isFilePickerOpen, setIsFilePickerOpen] = useState(false);
   const { fileNodes } = useUserStore();
   
-  // 索引文件列表状态
-  const [indexedFiles, setIndexedFiles] = useState<IndexedFile[]>([]);
+  // 使用React Query获取知识库数据
+  const { data: knowledgeBaseData, isLoading: kbLoading, error: kbError } = useKnowledgeBase();
+  const { data: knowledgeBaseDocs, isLoading: docsLoading, error: docsError } = useKnowledgeBaseDocs();
+  const addDocumentMutation = useAddDocumentToKnowledgeBase();
+  const removeDocumentMutation = useRemoveDocumentFromKnowledgeBase();
   
   // 处理文件选择
   const handleFileSelect = (node: any, path: string) => {
@@ -65,41 +73,34 @@ export const KnowledgeCenter: React.FC = () => {
       return;
     }
     
-    // 检查文件是否已经在索引列表中
-    const isAlreadyIndexed = indexedFiles.some(file => file.id === node.id);
-    if (isAlreadyIndexed) {
-      console.log('File already indexed:', node.name);
-      return;
+    // 使用实际的API调用添加文档到知识库
+    addDocumentMutation.mutate(node.id, {
+      onSuccess: () => {
+        console.log('Document added to knowledge base successfully:', node.name);
+        // 关闭文件选择器
+        setIsFilePickerOpen(false);
+      },
+      onError: (error) => {
+        console.error('Failed to add document to knowledge base:', error);
+        // 可以在这里添加错误提示，但不关闭模态框，让用户可以重试
+      }
+    });
+  };
+
+  // 处理从知识库移除文档
+  const handleRemoveDocument = (docId: string) => {
+    // 添加确认对话框
+    if (window.confirm('确定要从知识库中移除此文档吗？')) {
+      removeDocumentMutation.mutate(docId, {
+        onSuccess: () => {
+          console.log('Document removed from knowledge base successfully');
+        },
+        onError: (error) => {
+          console.error('Failed to remove document from knowledge base:', error);
+          // 可以在这里添加错误提示
+        }
+      });
     }
-    
-    // 创建新的索引文件对象
-    const newIndexedFile: IndexedFile = {
-      id: node.id,
-      name: node.name,
-      type: node.type || 'unknown',
-      size: node.size || '0 KB',
-      updated: new Date().toLocaleDateString(),
-      status: 'processing' // 初始状态为处理中
-    };
-    
-    // 添加到索引列表
-    setIndexedFiles(prev => [...prev, newIndexedFile]);
-    
-    // 关闭文件选择器
-    setIsFilePickerOpen(false);
-    
-    // 模拟索引处理过程
-    setTimeout(() => {
-      setIndexedFiles(prev => 
-        prev.map(file => 
-          file.id === node.id 
-            ? { ...file, status: 'indexed' as const } 
-            : file
-        )
-      );
-    }, 2000);
-    
-    console.log('Added file to index:', node.name, 'Path:', path);
   };
 
   useEffect(() => {
@@ -261,48 +262,65 @@ export const KnowledgeCenter: React.FC = () => {
               {t.knowledge.indexedFilesTitle}
             </h3>
             <button 
-              className="p-1.5 bg-white border border-gray-200 hover:border-primary-200 hover:text-primary-600 rounded-md text-gray-500 transition-all shadow-sm" 
+              className="p-1.5 bg-white border border-gray-200 hover:border-primary-200 hover:text-primary-600 rounded-md text-gray-500 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" 
               title={t.knowledge.uploadNew}
               onClick={() => setIsFilePickerOpen(true)}
+              disabled={addDocumentMutation.isPending}
             >
-              <Plus className="h-3.5 w-3.5" />
+              {addDocumentMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Plus className="h-3.5 w-3.5" />
+              )}
             </button>
           </div>
           
           <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-2">
-            {indexedFiles.length === 0 ? (
+            {kbLoading || docsLoading ? (
+              <div className="flex items-center justify-center h-32 text-gray-400">
+                <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                <span>Loading knowledge base...</span>
+              </div>
+            ) : kbError || docsError ? (
+              <div className="flex flex-col items-center justify-center h-32 text-red-400">
+                <XCircle className="h-8 w-8 mb-2" />
+                <p className="text-sm">Failed to load knowledge base</p>
+                <p className="text-xs mt-1">Please try again later</p>
+              </div>
+            ) : !knowledgeBaseDocs || knowledgeBaseDocs.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-32 text-gray-400">
                 <File className="h-8 w-8 mb-2" />
                 <p className="text-sm">No indexed files</p>
                 <p className="text-xs mt-1">Click the + button to add documents</p>
               </div>
             ) : (
-              indexedFiles.map((file) => (
-                <div key={file.id} className="bg-white p-3 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
+              knowledgeBaseDocs.map((doc) => (
+                <div key={doc.id} className="bg-white p-3 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <FileText className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                        <h4 className="font-medium text-sm text-gray-900 truncate">{file.name}</h4>
+                        <h4 className="font-medium text-sm text-gray-900 truncate">{doc.document.name}</h4>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-gray-500">
-                        <span>{file.type}</span>
-                        <span>{file.size}</span>
-                        <span>{file.updated}</span>
+                        <span>{doc.document.type}</span>
+                        <span>Added by {doc.addedBy.name}</span>
+                        <span>{new Date(doc.addedAt).toLocaleDateString()}</span>
                       </div>
                     </div>
                     <div className="ml-2 flex-shrink-0">
-                      {file.status === 'processing' ? (
-                        <div className="flex items-center gap-1 text-xs text-amber-600">
-                          <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></div>
-                          <span>处理中</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1 text-xs text-green-600">
-                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                          <span>已索引</span>
-                        </div>
-                      )}
+                      <button
+                        onClick={() => handleRemoveDocument(doc.document.id)}
+                        disabled={removeDocumentMutation.isPending}
+                        className="p-1 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Remove from knowledge base"
+                      >
+                        {removeDocumentMutation.isPending && removeDocumentMutation.variables === doc.document.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <XCircle className="h-4 w-4" />
+                        )}
+                      </button>
                     </div>
                   </div>
                 </div>

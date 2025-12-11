@@ -40,6 +40,14 @@ export const FilePickerModal: React.FC<FilePickerModalProps> = ({ isOpen, onClos
     setSelectedPath(path);
   };
 
+  const handleConfirm = () => {
+    if (selectedNode) {
+      // 调用onSelect但不立即关闭模态框
+      // 让调用方决定何时关闭模态框
+      onSelect(selectedNode, selectedPath);
+    }
+  };
+
   const renderTree = (nodes: FileNode[], pathPrefix: string = '') => {
     return nodes.map(node => {
       const isFolder = node.type === 'folder';
@@ -93,10 +101,7 @@ export const FilePickerModal: React.FC<FilePickerModalProps> = ({ isOpen, onClos
            <Button variant="secondary" onClick={onClose}>{t.common.cancel}</Button>
            <Button 
              disabled={!selectedId} 
-             onClick={() => {
-               if(selectedNode) onSelect(selectedNode, selectedPath);
-               onClose();
-             }}
+             onClick={handleConfirm}
            >
              {t.common.select}
            </Button>
