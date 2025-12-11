@@ -87,6 +87,7 @@ export const KnowledgeCenter: React.FC = () => {
   // 当会话详情加载完成时，更新消息列表
   useEffect(() => {
     if (sessionDetail && activeSessionId) {
+      console.log('Loading session messages:', sessionDetail.message);
       setCurrentMessages(sessionDetail.message || []);
     }
   }, [sessionDetail, activeSessionId, setCurrentMessages]);
@@ -174,46 +175,90 @@ export const KnowledgeCenter: React.FC = () => {
   const handleSend = () => {
     if (!input.trim() || isReceivingResponse) return;
 
-    // 如果没有活跃会话，先创建一个
-    if (!activeSessionId) {
-      handleCreateNewSession();
-      return;
-    }
-
     const userMessage = input.trim();
     setInput('');
     addUserMessage(userMessage);
     setReceivingResponse(true);
 
-    // 发送消息到AI
-    sendMessageMutation.mutate({
-      id: activeSessionId,
-      messageRequest: adaptMessageToApi(userMessage, 'Analyst')
-    }, {
-      onSuccess: async (response: any) => {
-        try {
-          // 初始化流式内容
-          updateStreamingContent('');
+    // 如果没有活跃会话，先创建一个，然后再发送消息
+    if (!activeSessionId) {
+      createSessionMutation.mutate({
+        type: 'rag',
+        relatedId: selectedBase === 'personal' ? 'personal' : knowledgeBaseData?.knowledgeBase?.id || '',
+        title: new Date().toLocaleString()
+      }, {
+        onSuccess: (data) => {
+          setActiveSessionId(data.id);
+          clearCurrentSession();
+          setShowHistory(false);
           
-          // 处理流式响应，使用回调实现逐字显示
-          const content = await processEventStream(response, (chunk) => {
-            appendStreamingContent(chunk);
+          // 创建会话成功后，发送消息
+          sendMessageMutation.mutate({
+            id: data.id,
+            messageRequest: adaptMessageToApi(userMessage, 'Analyst')
+          }, {
+            onSuccess: async (response: any) => {
+              try {
+                // 初始化流式内容
+                updateStreamingContent('');
+                
+                // 处理流式响应，使用回调实现逐字显示
+                const content = await processEventStream(response, (chunk) => {
+                  appendStreamingContent(chunk);
+                });
+                
+                completeStreamingResponse();
+              } catch (error) {
+                console.error('Error processing stream:', error);
+                addAiMessage('抱歉，处理响应时出现错误。');
+              } finally {
+                setReceivingResponse(false);
+              }
+            },
+            onError: (error) => {
+              console.error('Failed to send message:', error);
+              addAiMessage('抱歉，发送消息时出现错误。');
+              setReceivingResponse(false);
+            }
           });
-          
-          completeStreamingResponse();
-        } catch (error) {
-          console.error('Error processing stream:', error);
-          addAiMessage('抱歉，处理响应时出现错误。');
-        } finally {
+        },
+        onError: (error) => {
+          console.error('Failed to create chat session:', error);
+          addAiMessage('抱歉，创建对话会话时出现错误。');
           setReceivingResponse(false);
         }
-      },
-      onError: (error) => {
-        console.error('Failed to send message:', error);
-        addAiMessage('抱歉，发送消息时出现错误。');
-        setReceivingResponse(false);
-      }
-    });
+      });
+    } else {
+      // 已有活跃会话，直接发送消息
+      sendMessageMutation.mutate({
+        id: activeSessionId,
+        messageRequest: adaptMessageToApi(userMessage, 'Analyst')
+      }, {
+        onSuccess: async (response: any) => {
+          try {
+            // 初始化流式内容
+            updateStreamingContent('');
+            
+            // 处理流式响应，使用回调实现逐字显示
+            const content = await processEventStream(response, (chunk) => {
+              appendStreamingContent(chunk);
+            });
+            
+            completeStreamingResponse();
+          } catch (error) {
+            console.error('Error processing stream:', error);
+            addAiMessage('抱歉，处理响应时出现错误。');
+          } finally {
+            setReceivingResponse(false);
+          }
+        },
+        onError: (error) => {
+          console.error('Failed to send message:', error);
+          addAiMessage('抱歉，发送消息时出现错误。');
+          setReceivingResponse(false);
+        }
+      });
+    }
   };
 
   return (
@@ -260,7 +305,9 @@ export const KnowledgeCenter: React.FC = () => {
               </p>
             </div>
           ) : (
-            currentMessages?.map((msg) => (
+            currentMessages?.map((msg) => {
+              console.log('Rendering message:', msg);
+              return (
               <div key={msg.id} className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'ai' && (
                   <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 flex-shrink-0 mt-1 ring-4 ring-white shadow-sm">
@@ -280,7 +327,8 @@ export const KnowledgeCenter: React.FC = () => {
                   </div>
                 )}
               </div>
-            ))
+              );
+            })
           )}
           
           {/* 流式响应显示 */}
@@ -354,8 +402,12 @@ export const KnowledgeCenter: React.FC = () => {
                     e.preventDefault();
                     handleSend();
                   }
+                  // Shift+Enter 允许换行
+                  else if (e.key === 'Enter' && e.shiftKey) {
+                    // 允许默认换行行为
+                  }
                 }}
-                placeholder={t.knowledge.chatPlaceholder}
+                placeholder={`${t.knowledge.chatPlaceholder} (Enter发送，Shift+Enter换行)`}
                 className="w-full pl-4 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all resize-none text-sm min-h-[50px] max-h-[150px]"
                 rows={1}
                 disabled={isReceivingResponse}

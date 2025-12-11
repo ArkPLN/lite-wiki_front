@@ -60,7 +60,7 @@ export const adaptChatSessionHistoryFromApi = (apiSessionHistory: ApiChatSession
 export const adaptMessageFromApi = (apiMessage: ApiChatMessage): AIMessage => {
   return {
     id: apiMessage.id || '',
-    role: apiMessage.role === 'user' ? 'user' : 'ai',
+    role: apiMessage.role?.toLowerCase() === 'user' ? 'user' : 'ai',
     content: apiMessage.content || '',
     timestamp: new Date(apiMessage.createdAt || new Date()),
   };

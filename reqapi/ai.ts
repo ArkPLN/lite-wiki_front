@@ -3,6 +3,7 @@ import {type AxiosRequestConfig} from 'axios'
 import useUserStore from '@/store'
 import {type createChatSessionRequest, type ChatSessionId, type ChatSession, type ChatSessionHistory, type ChatMessageRequest, type DeleteChatSessionRespond} from '@/types/ai/session'
 import { create } from 'domain';
+import { adaptChatSessionFromApi, adaptChatSessionHistoryFromApi } from '@/utils/chatAdapter';
 
 
 // Helper function to get user token
@@ -40,7 +41,8 @@ export const getChatSessions = async (): Promise<ChatSession[]> => {
     }
   }
   const response = await axios(config)
-  return response.data as ChatSession[]
+  // 使用适配器将API响应转换为前端格式
+  return response.data.map((session: any) => adaptChatSessionFromApi(session))
 }
 
 // 根据ID获取特定聊天会话详情（包含消息历史）
@@ -53,7 +55,8 @@ export const getChatSessionById = async (id: ChatSessionId): Promise<ChatSession
     }
   }
   const response = await axios(config)
-  return response.data as ChatSessionHistory
+  // 使用适配器将API响应转换为前端格式
+  return adaptChatSessionHistoryFromApi(response.data)
 }
 
 // 删除聊天会话
