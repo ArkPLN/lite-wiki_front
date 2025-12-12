@@ -19,6 +19,8 @@ A lite version of Wiki, providing AI-assisted online documents editor and team c
 - Vite
 - React Router
 - React Query
+- React Hook Form
+- Axios
 - TailwindCSS
 - Lucide React Icons
 - Material UI
