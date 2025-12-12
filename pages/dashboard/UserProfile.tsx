@@ -1,20 +1,29 @@
-
-import React, { useState } from 'react';
-import { MOCK_USER } from '@/constants';
-import { Mail, Shield, User as UserIcon, Camera, Smartphone, Edit2, X, Lock, CheckCircle, AlertTriangle, Trash2 } from 'lucide-react';
+// UserProfile.tsx
+import React, { useState, useEffect } from 'react';
+import { Mail, Shield, User as UserIcon, Camera, Smartphone, Edit2, X, Lock, AlertTriangle, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useLanguage } from '@/lib/i18n';
-import useUserStore from '@/store';
-import { userProfile, accountData } from '@/types/auth/user';
+import useUserStore from '@/store'; // 引入你的 Zustand store
+import { accountData } from '@/types/auth/user';
 import axios from 'axios';
 
+// 本地表单状态接口 (移除了 nickname)
+interface LocalUserProfile {
+  name: string;
+  email: string;
+  role: string;
+  phone: string;
+  bio: string | null;
+  password: string | null;
+}
 
 export const UserProfile: React.FC = () => {
   const { t, language, setLanguage } = useLanguage();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  
+  const [isLoading, setIsLoading] = useState(true);
+
   // 2FA Modal State
   const [show2FA, setShow2FA] = useState(false);
   const [twoFACode, setTwoFACode] = useState('');
@@ -22,34 +31,97 @@ export const UserProfile: React.FC = () => {
   // Delete Account Modal State
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  // Form State
-  const [formData, setFormData] = useState<userProfile>({
-    name: MOCK_USER.name,
-    email: MOCK_USER.email,
-    role: MOCK_USER.role,
-    phone: '13800000000', // Default placeholder
-    nickname: MOCK_USER.name, // Default placeholder
-    bio: 'Senior developer passionate about React and AI agents.', // Default placeholder
-    password: '', // Should represent new password
+  // Zustand: 获取设置方法和当前数据
+  const { setAccountData, accountData: storeAccountData } = useUserStore();
+
+  // Form State: 初始化为空，等待数据拉取
+  const [formData, setFormData] = useState<LocalUserProfile>({
+    name: '',
+    email: '',
+    role: 'user', // 始终为 user
+    phone: '',
+    bio: '',
+    password: '',
   });
 
+  // 获取 Token 辅助函数
+  const getToken = () => localStorage.getItem('token') || useUserStore.getState().bearerToken || '';
 
-  // API call to update user profile
-  const updateUserProfile = async (data: Partial<accountData>): Promise<accountData> => {
-    const token = useUserStore.getState().bearerToken;
+  // ---------------------------------------------------------------------------
+  // 核心逻辑 1: 获取用户信息并同步全局状态 (GET /api/v1/auth/me)
+  // ---------------------------------------------------------------------------
+  const fetchUserData = async () => {
+    try {
+      setIsLoading(true);
+      const token = getToken();
+
+      if (!token) {
+        console.error("No token found");
+        setIsLoading(false);
+        return;
+      }
+
+      // 使用 /auth/me 接口，它不需要 ID，只需要 Token
+      // 这解决了 "User ID missing" 的问题，并且能获取最新数据
+      const response = await axios.get<accountData>('api/v1/auth/me', {
+        headers: {
+          'Authorization': token
+        }
+      });
+
+      const latestUserData = response.data;
+
+      // [关键点]：请求成功后，立即同步更新 Zustand 全局状态
+      setAccountData(latestUserData);
+
+      // 同步更新本地表单状态
+      setFormData({
+        name: latestUserData.name || '',
+        email: latestUserData.email || '',
+        role: 'user', // 强制
+        phone: latestUserData.phoneNumber || '',
+        bio: latestUserData.bio || '',
+        password: '', // 密码字段默认清空
+      });
+
+    } catch (error) {
+      console.error("Failed to fetch user data:", error);
+      // 可以在这里处理 Token 过期跳转登录等逻辑
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // 核心逻辑 2: 更新用户信息 (PUT /api/v1/users/me)
+  // ---------------------------------------------------------------------------
+  const updateUserProfile = async (data: any): Promise<accountData> => {
+    const token = getToken();
     const response = await axios.put('api/v1/users/me', data, {
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': token || ''
+        'Authorization': token
       }
     });
     return response.data;
   };
 
+  // Effect: 组件挂载时立即执行一次数据拉取
+  useEffect(() => {
+    fetchUserData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // 空依赖数组确保只在挂载时执行一次
+
   const toggleEdit = () => {
-    if (isEditing) {
-      // Cancel edit: reset specific sensitive fields if needed
-      setFormData(prev => ({ ...prev, password: '' }));
+    if (isEditing && storeAccountData) {
+      // 取消编辑：从全局 Store 回滚数据，防止未保存的修改残留
+      setFormData(prev => ({
+        ...prev,
+        name: storeAccountData.name,
+        phone: storeAccountData.phoneNumber,
+        bio: storeAccountData.bio,
+        password: ''
+      }));
     }
     setIsEditing(!isEditing);
   };
@@ -62,10 +134,8 @@ export const UserProfile: React.FC = () => {
   const initiateSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.password) {
-      // If password field is filled, trigger 2FA
       setShow2FA(true);
     } else {
-      // Normal save without password change
       await performSave();
     }
   };
@@ -75,80 +145,68 @@ export const UserProfile: React.FC = () => {
       alert('Please enter a valid code');
       return;
     }
-    // Simulate verification
     setTimeout(async () => {
       setShow2FA(false);
       setTwoFACode('');
-      setFormData(prev => ({ ...prev, password: '' })); // Clear password after save
+      setFormData(prev => ({ ...prev, password: '' }));
       await performSave();
     }, 800);
   };
 
   const performSave = async () => {
     setIsSaving(true);
-    // Save current form data in case we need to revert
     const previousFormData = { ...formData };
     
     try {
-      // Prepare data to match accountData interface
-      const updateData: Partial<accountData> = {
+      // 构建符合 API 要求的 Payload
+      // 假设 storeAccountData 已在 fetchUserData 中被填充
+      const currentAvatar = storeAccountData?.avatar || null;
+
+      const payload = {
         name: formData.name,
+        email: formData.email, 
+        avatar: currentAvatar, // 保持原头像
         phoneNumber: formData.phone || '',
         bio: formData.bio || null,
-        email: formData.email
+        password: formData.password ? formData.password : null
       };
       
-      // Only include password if it's not empty
-      if (formData.password) {
-        // In a real app, you would handle password updates separately
-        // For now, we'll just clear it from the form data
-        (updateData as any)['password'] = formData.password;
-      }
+      // 发送更新请求
+      const updatedAccountData = await updateUserProfile(payload);
       
-      // Call the API to update user profile
-      const updatedAccountData = await updateUserProfile(updateData);
+      // [关键点]：更新成功后，再次同步 Zustand 全局状态
+      setAccountData(updatedAccountData);
       
-      // Update Zustand store with the new data
-      useUserStore.getState().setAccountData(updatedAccountData);
-      
-      // Update local state
+      // 更新本地状态
+      setFormData(prev => ({
+        ...prev,
+        name: updatedAccountData.name,
+        phone: updatedAccountData.phoneNumber,
+        bio: updatedAccountData.bio,
+        email: updatedAccountData.email,
+        password: ''
+      }));
+
       setIsSaving(false);
       setIsEditing(false);
       
       alert(language === 'en' ? 'Settings saved successfully!' : '设置已保存！');
     } catch (error) {
-      // Revert to previous form data on error
+      // 失败回滚
       setFormData(previousFormData);
-      
-      // Show error message
       console.error('Failed to save profile:', error);
       alert(language === 'en' ? 'Failed to save settings. Please try again.' : '设置保存失败，请重试。');
-      
       setIsSaving(false);
     }
   };
 
-
-  // Subscribe to accountData changes from the store
-  const accountData = useUserStore(state => state.accountData);
-  console.log(accountData);
-  React.useEffect(() => {
-    // Always run on first mount and when accountData changes
-    if (accountData) {
-      setFormData({
-        name: accountData.name,
-        email: accountData.email,
-        role: MOCK_USER.role,
-        phone: accountData.phoneNumber,
-        nickname: accountData.name,
-        bio: accountData.bio,
-        password: '', // Don't show password in form
-      })
-    }
-    // If accountData is null but we have stored data, we could load from localStorage here
-    // This ensures the effect runs at least once on mount
-  }, [accountData]);
-
+  if (isLoading) {
+    return (
+      <div className="flex h-96 w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-4xl mx-auto animate-fade-in relative">
@@ -163,7 +221,8 @@ export const UserProfile: React.FC = () => {
             <div className="flex items-end gap-6">
               <div className="relative group">
                 <img 
-                  src={MOCK_USER.avatar} 
+                  // 优先使用 Store 中的头像，其次使用 UI Avatars 生成的占位图
+                  src={storeAccountData?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.name || 'User')}&background=random`} 
                   alt="Profile" 
                   className="h-24 w-24 rounded-full border-4 border-white bg-white shadow-md object-cover"
                 />
@@ -175,7 +234,7 @@ export const UserProfile: React.FC = () => {
               </div>
               <div className="mb-1">
                 <h2 className="text-2xl font-bold text-gray-900">{formData.name}</h2>
-                <p className="text-gray-500">{formData.role.replace('_', ' ')}</p>
+                <p className="text-gray-500">{formData.role.toUpperCase()}</p>
               </div>
             </div>
             <Button 
@@ -207,21 +266,15 @@ export const UserProfile: React.FC = () => {
                   className={!isEditing ? "bg-gray-50 text-gray-500 border-gray-200 cursor-not-allowed" : ""}
                 />
 
-                <Input
-                  label={t.profile.nickname}
-                  name="nickname"
-                  value={formData.nickname}
-                  onChange={handleChange}
-                  disabled={!isEditing}
-                  className={!isEditing ? "bg-gray-50 text-gray-500 border-gray-200 cursor-not-allowed" : ""}
-                />
+                {/* Nickname 字段已移除 */}
 
                 <Input
                   label={t.common.email}
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
-                  disabled={true} // Email usually requires a separate process to change
+                  // Email 不允许修改
+                  disabled={true} 
                   className="bg-gray-50 text-gray-500 border-gray-200 cursor-not-allowed"
                   icon={<Mail className="h-4 w-4 text-gray-400" />}
                 />
@@ -233,7 +286,7 @@ export const UserProfile: React.FC = () => {
                    <textarea
                      name="bio"
                      rows={4}
-                     value={formData.bio}
+                     value={formData.bio || ''}
                      onChange={handleChange}
                      disabled={!isEditing}
                      className={`w-full px-3 py-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors ${
@@ -263,7 +316,7 @@ export const UserProfile: React.FC = () => {
                    
                    <Input
                       label={t.profile.role}
-                      value={formData.role.replace('_', ' ').toUpperCase()}
+                      value={formData.role.toUpperCase()}
                       disabled={true}
                       className="bg-gray-50 text-gray-500 border-gray-200 cursor-not-allowed capitalize"
                     />
@@ -280,7 +333,7 @@ export const UserProfile: React.FC = () => {
                          label={t.profile.newPassword}
                          type="password"
                          name="password"
-                         value={formData.password}
+                         value={formData.password || ''}
                          onChange={handleChange}
                          placeholder={t.profile.newPasswordPlaceholder}
                          className="bg-white"
@@ -408,7 +461,6 @@ export const UserProfile: React.FC = () => {
                     variant="outline" 
                     fullWidth 
                     onClick={() => {
-                      // 伪UI，不发送真实请求
                       alert(t.profile.deleteAccountSuccess);
                       setShowDeleteModal(false);
                     }}
