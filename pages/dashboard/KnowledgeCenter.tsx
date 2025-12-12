@@ -120,6 +120,9 @@ useEffect(() => {
       onSuccess: () => {
         console.log('Document added to knowledge base successfully:', node.name);
         setIsFilePickerOpen(false);
+        // 确保重新获取知识库文档列表
+        queryClient.invalidateQueries({ queryKey: ['knowledgeBaseDocs'] });
+        queryClient.refetchQueries({ queryKey: ['knowledgeBaseDocs'] });
       },
       onError: (error) => {
         console.error('Failed to add document to knowledge base:', error);
@@ -133,6 +136,9 @@ useEffect(() => {
       removeDocumentMutation.mutate(docId, {
         onSuccess: () => {
           console.log('Document removed from knowledge base successfully');
+          // 确保重新获取知识库文档列表
+          queryClient.invalidateQueries({ queryKey: ['knowledgeBaseDocs'] });
+          queryClient.refetchQueries({ queryKey: ['knowledgeBaseDocs'] });
         },
         onError: (error) => {
           console.error('Failed to remove document from knowledge base:', error);

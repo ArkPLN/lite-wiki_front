@@ -65,6 +65,9 @@ export interface TranslationSchema {
     update: string; // New
     confirmDelete: string; // New
     confirmBatchDelete: string;
+    error: string;
+    errorLoading: string;
+    retry: string;
     // Modals
     save: string;
     edit: string;
@@ -275,6 +278,8 @@ export interface TranslationSchema {
     favoritesDesc: string;
     addFavorite: string;
     removeFromFavorites: string;
+    favoriteAdded: string;
+    favoriteRemoved: string;
     dateAdded: string;
     location: string;
     noFavorites: string;
@@ -342,6 +347,7 @@ export interface TranslationSchema {
         memberProfile: string;
         copy: string;
         copied: string;
+        editRole: string;
     };
     // Management Subpage
     accessDenied: string;
@@ -517,6 +523,9 @@ export const translations: Record<Language, TranslationSchema> = {
       update: 'Update',
       confirmDelete: 'Are you sure you want to delete this?',
       confirmBatchDelete: 'Are you sure you want to delete these {count} items?',
+      error: 'Error',
+      errorLoading: 'Error loading data',
+      retry: 'Retry',
       // Modals
       save: 'Save',
       edit: 'Edit',
@@ -723,6 +732,8 @@ export const translations: Record<Language, TranslationSchema> = {
       favoritesDesc: 'Your pinned documents and folders for quick access.',
       addFavorite: 'Add Favorite',
       removeFromFavorites: 'Remove from Favorites',
+      favoriteAdded: 'Added to favorites',
+      favoriteRemoved: 'Removed from favorites',
       dateAdded: 'Date Added',
       location: 'Location',
       noFavorites: 'No favorites yet',
@@ -788,6 +799,7 @@ export const translations: Record<Language, TranslationSchema> = {
         memberProfile: 'Member Profile',
         copy: 'Copy',
         copied: 'Copied!',
+        editRole: 'Edit Role',
       },
       // Management
       accessDenied: 'Access Denied',
@@ -972,6 +984,9 @@ export const translations: Record<Language, TranslationSchema> = {
       update: '更新',
       confirmDelete: '确定要删除此内容吗？',
       confirmBatchDelete: '确定要删除这 {count} 个项目吗？',
+      error: '错误',
+      errorLoading: '加载数据错误',
+      retry: '重试',
       // Modals
       save: '保存',
       edit: '编辑',
@@ -1178,6 +1193,8 @@ export const translations: Record<Language, TranslationSchema> = {
       favoritesDesc: '您固定的文档和文件夹，方便快速访问。',
       addFavorite: '添加收藏',
       removeFromFavorites: '取消收藏',
+      favoriteAdded: '已添加到收藏',
+      favoriteRemoved: '已从收藏中移除',
       dateAdded: '添加日期',
       location: '位置',
       noFavorites: '暂无收藏',
@@ -1243,6 +1260,7 @@ export const translations: Record<Language, TranslationSchema> = {
         memberProfile: '成员资料',
         copy: '复制',
         copied: '已复制',
+        editRole: '编辑角色',
       },
       // Management
       accessDenied: '访问被拒绝',

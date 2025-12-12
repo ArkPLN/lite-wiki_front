@@ -21,7 +21,7 @@ export const useKnowledgeBaseDocs = () => {
   return useQuery<KnowledgeBaseDocList>({
     queryKey: ['knowledgeBaseDocs'],
     queryFn: getKnowledgeBaseDocs,
-    staleTime: 5 * 60 * 1000, // 5分钟
+    staleTime: 30 * 1000, // 30秒，减少缓存时间以便更快反映变化
   });
 };
 
@@ -36,6 +36,8 @@ export const useAddDocumentToKnowledgeBase = () => {
       queryClient.invalidateQueries({ queryKey: ['knowledgeBase'] });
       // 使知识库文档列表查询失效，触发重新获取
       queryClient.invalidateQueries({ queryKey: ['knowledgeBaseDocs'] });
+      // 立即重新获取知识库文档列表，确保显示最新数据
+      queryClient.refetchQueries({ queryKey: ['knowledgeBaseDocs'] });
       // 也可以考虑更新文档列表相关的查询
       queryClient.invalidateQueries({ queryKey: ['documents'] });
     },
@@ -56,6 +58,8 @@ export const useRemoveDocumentFromKnowledgeBase = () => {
       queryClient.invalidateQueries({ queryKey: ['knowledgeBase'] });
       // 使知识库文档列表查询失效，触发重新获取
       queryClient.invalidateQueries({ queryKey: ['knowledgeBaseDocs'] });
+      // 立即重新获取知识库文档列表，确保显示最新数据
+      queryClient.refetchQueries({ queryKey: ['knowledgeBaseDocs'] });
       // 也可以考虑更新文档列表相关的查询
       queryClient.invalidateQueries({ queryKey: ['documents'] });
     },

@@ -108,6 +108,8 @@ export const Favorites: React.FC = () => {
       // Show feedback based on response
       if (data.message === 'Document added to favorites') {
         showNotification('success', t.library.favoriteAdded || '已添加到收藏');
+        // 关闭文件选择器弹窗
+        setIsPickerOpen(false);
       } else {
         showNotification('success', t.library.favoriteRemoved || '已从收藏中移除');
       }

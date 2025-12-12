@@ -1,11 +1,11 @@
 
 
 import React, { useState } from 'react';
-import { Mail, MoreVertical, Shield, UserPlus, Snowflake, Trash2, ArrowRightLeft, User, X, Phone, Copy, Check, Calendar } from 'lucide-react';
+import { Mail, MoreVertical, Shield, UserPlus, Snowflake, Trash2, ArrowRightLeft, User, X, Phone, Copy, Check, Calendar, Search, Edit } from 'lucide-react';
 import { TeamMember } from '../../../types';
 import { useLanguage } from '../../../lib/i18n';
 import { Button } from '../../../components/ui/Button';
-import { InviteMemberModal } from '../../../components/dashboard/SharedModals';
+import { InviteMemberModal, EditMemberRoleModal } from '../../../components/dashboard/SharedModals';
 
 // Mock Data with more details
 const INITIAL_MEMBERS: TeamMember[] = [
@@ -46,9 +46,29 @@ const CopyButton: React.FC<{ text: string }> = ({ text }) => {
 export const Directory: React.FC = () => {
   const { t } = useLanguage();
   const [members, setMembers] = useState<TeamMember[]>(INITIAL_MEMBERS);
+  const [filteredMembers, setFilteredMembers] = useState<TeamMember[]>(INITIAL_MEMBERS);
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [isEditRoleOpen, setIsEditRoleOpen] = useState(false);
+  const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Filter members based on search query
+  React.useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setFilteredMembers(members);
+    } else {
+      const query = searchQuery.toLowerCase();
+      const filtered = members.filter(member => 
+        member.name.toLowerCase().includes(query) || 
+        member.email.toLowerCase().includes(query) ||
+        member.role.toLowerCase().includes(query) ||
+        (member.bio && member.bio.toLowerCase().includes(query))
+      );
+      setFilteredMembers(filtered);
+    }
+  }, [searchQuery, members]);
 
   const handleInvite = () => {
     setIsInviteOpen(true);
@@ -80,7 +100,22 @@ export const Directory: React.FC = () => {
     } else if (action === 'view') {
         const member = members.find(m => m.id === memberId);
         if (member) setSelectedMember(member);
+    } else if (action === 'editRole') {
+        const member = members.find(m => m.id === memberId);
+        if (member) {
+            setEditingMember(member);
+            setIsEditRoleOpen(true);
+        }
     }
+  };
+
+  const handleUpdateRole = (memberId: string, newRole: string) => {
+    setMembers(prev => prev.map(m => m.id === memberId ? { 
+        ...m, 
+        role: newRole as TeamMember['role']
+    } : m));
+    setIsEditRoleOpen(false);
+    setEditingMember(null);
   };
 
   return (
@@ -91,6 +126,19 @@ export const Directory: React.FC = () => {
            <p className="text-gray-500 text-sm">{t.team.activeMembersSubtitle}</p>
         </div>
         <div className="flex gap-3">
+            {/* Search Bar */}
+            <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search className="h-4 w-4 text-gray-400" />
+                </div>
+                <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={t.common.searchPlaceholder}
+                    className="block w-64 pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                />
+            </div>
              <button className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
                {t.team.exportList}
             </button>
@@ -102,7 +150,7 @@ export const Directory: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {members.map((member) => (
+        {filteredMembers.map((member) => (
           <div 
             key={member.id} 
             onClick={() => setSelectedMember(member)}
@@ -139,6 +187,13 @@ export const Directory: React.FC = () => {
                         >
                             <User className="h-4 w-4 text-gray-500" />
                             {t.team.directoryMenu.viewDetails}
+                        </button>
+                        <button 
+                            onClick={(e) => handleAction('editRole', member.id, e)}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                        >
+                            <Edit className="h-4 w-4 text-purple-500" />
+                            {t.team.directoryMenu.editRole}
                         </button>
                         <div className="border-t border-gray-100 my-1"></div>
                         <button 
@@ -292,6 +347,24 @@ export const Directory: React.FC = () => {
 
       {/* Invite Member Modal */}
       <InviteMemberModal isOpen={isInviteOpen} onClose={() => setIsInviteOpen(false)} />
+      
+      {/* Edit Member Role Modal */}
+      {editingMember && (
+        <EditMemberRoleModal 
+          isOpen={isEditRoleOpen}
+          onClose={() => {
+            setIsEditRoleOpen(false);
+            setEditingMember(null);
+          }}
+          member={{
+            id: editingMember.id,
+            name: editingMember.name,
+            role: editingMember.role,
+            email: editingMember.email
+          }}
+          onSave={handleUpdateRole}
+        />
+      )}
     </div>
   );
 };

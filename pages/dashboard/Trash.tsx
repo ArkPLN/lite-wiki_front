@@ -6,8 +6,9 @@ import { Button } from '../../components/ui/Button';
 import { DashboardItem, FileNode } from '../../types';
 import { FilePickerModal, EditItemModal } from '../../components/dashboard/SharedModals';
 import { SearchFilterBar, SearchParams } from '../../components/dashboard/SearchFilterBar';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getRecycleBin, restoreFromRecycleBinById, removeFromRecycleBinById } from '../../reqapi/recycle';
+import { getRecycleBin, restoreFromRecycleBinById, removeFromRecycleBinById, emptyRecycleBin } from '../../reqapi/recycle';
 import { documentToDashboardItem } from '../../utils/documentUtils';
 import { debounce } from '../../utils/debounce';
 import useUserStore from '@/store';
@@ -24,6 +25,7 @@ export const Trash: React.FC = () => {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<DashboardItem | null>(null);
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
 
   // 获取回收站数据
   const { data: recycleBinData = [], isLoading, error, refetch } = useQuery({
@@ -53,6 +55,22 @@ export const Trash: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['recycleBin'] });
       queryClient.invalidateQueries({ queryKey: ['fileNodes'] });
     },
+  });
+
+  // 清空回收站的mutation
+  const emptyTrashMutation = useMutation({
+    mutationFn: emptyRecycleBin,
+    onSuccess: (data) => {
+      // 成功后刷新数据
+      queryClient.invalidateQueries({ queryKey: ['recycleBin'] });
+      queryClient.invalidateQueries({ queryKey: ['fileNodes'] });
+      // 显示成功消息
+      alert(data.message);
+    },
+    onError: (error) => {
+      console.error('Failed to empty recycle bin:', error);
+      alert('清空回收站失败，请稍后再试');
+    }
   });
 
   // 防抖的恢复函数
@@ -112,17 +130,19 @@ export const Trash: React.FC = () => {
   };
 
   const handleEmptyTrash = () => {
-    if (window.confirm(t.library.confirmEmpty)) {
-      // 这里可以添加批量删除的逻辑
-      // 目前只是清空本地显示，实际应该调用批量删除API
-      alert(t.library.emptySuccess);
-    }
+    setIsConfirmDialogOpen(true);
+  };
+
+  const handleConfirmEmptyTrash = () => {
+    emptyTrashMutation.mutate();
   };
 
   const handleAdd = (node: FileNode, path: string) => {
     // 这个功能可能需要重新考虑，因为回收站不应该有"添加到回收站"的功能
     // 或者这个功能是指将文件移动到回收站
     console.log('Add to recycle bin:', node, path);
+    // 关闭文件选择器弹窗
+    setIsPickerOpen(false);
   };
 
   const openEdit = (item: DashboardItem) => {
@@ -273,6 +293,7 @@ export const Trash: React.FC = () => {
         isOpen={isPickerOpen} 
         onClose={() => setIsPickerOpen(false)} 
         onSelect={handleAdd} 
+        fileNodes={fileNodes}
       />
       {editingItem && (
         <EditItemModal 
@@ -282,6 +303,18 @@ export const Trash: React.FC = () => {
             onSave={handleSaveEdit} 
         />
       )}
+      
+      {/* Confirmation Dialog for Emptying Trash */}
+      <ConfirmDialog
+        open={isConfirmDialogOpen}
+        onClose={() => setIsConfirmDialogOpen(false)}
+        onConfirm={handleConfirmEmptyTrash}
+        title="清空回收站"
+        message={`确定要永久删除回收站中的所有文件吗？此操作不可撤销，将永久删除 ${items.length} 个文件。`}
+        confirmText="确认清空"
+        cancelText="取消"
+        type="warning"
+      />
     </div>
   );
 };

@@ -78,3 +78,39 @@ export const removeFromRecycleBinById = async (id:string): Promise<DeleteDocumen
     return response.data as DeleteDocumentResponse;
     
 }
+
+/**
+ * Empty the recycle bin - permanently delete all documents
+ * This function gets all documents in the recycle bin and deletes them one by one
+ * @returns A promise that resolves to a response object with message and count
+ */
+export const emptyRecycleBin = async (): Promise<{message: string, count: number}> => {
+    try {
+        // First, get all documents in the recycle bin
+        const recycleBinItems = await getRecycleBin();
+        
+        if (!recycleBinItems || recycleBinItems.length === 0) {
+            return { message: "回收站已经是空的", count: 0 };
+        }
+        
+        // Delete each document one by one
+        let deletedCount = 0;
+        for (const item of recycleBinItems) {
+            try {
+                await removeFromRecycleBinById(item.id);
+                deletedCount++;
+            } catch (error) {
+                console.error(`Failed to delete document ${item.id}:`, error);
+                // Continue with other documents even if one fails
+            }
+        }
+        
+        return { 
+            message: `成功永久删除了 ${deletedCount} 个文件`, 
+            count: deletedCount 
+        };
+    } catch (error) {
+        console.error('Failed to empty recycle bin:', error);
+        throw new Error('清空回收站失败');
+    }
+}

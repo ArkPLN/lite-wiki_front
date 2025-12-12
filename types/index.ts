@@ -7,3 +7,4 @@ export * from './kb/kb';
 export * from './kb/kbfile';
 export * from './ai/session';
 export * from './community/community';
+export * from './teams/teams';
