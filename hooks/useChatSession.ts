@@ -4,7 +4,8 @@ import {
   getChatSessions, 
   getChatSessionById, 
   deleteChatSession,
-  sendMessageToSession
+  sendMessageToSession,
+  updateChatSessionTitle
 } from '@/reqapi/ai';
 import { 
   ChatSession, 
@@ -72,6 +73,24 @@ export const useSendMessageToSession = () => {
     mutationFn: ({ id, messageRequest }) => sendMessageToSession(id, messageRequest),
     onError: (error) => {
       console.error('Failed to send message to session:', error);
+    }
+  });
+};
+
+// 修改聊天会话标题
+export const useUpdateChatSessionTitle = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation<{message: string}, Error, { id: ChatSessionId; title: string }>({
+    mutationFn: ({ id, title }) => updateChatSessionTitle(id, title),
+    onSuccess: (_, { id }) => {
+      // 使聊天会话列表查询失效，触发重新获取
+      queryClient.invalidateQueries({ queryKey: ['chatSessions'] });
+      // 也使特定会话的查询失效，确保标题更新
+      queryClient.invalidateQueries({ queryKey: ['chatSession', id] });
+    },
+    onError: (error) => {
+      console.error('Failed to update chat session title:', error);
     }
   });
 };

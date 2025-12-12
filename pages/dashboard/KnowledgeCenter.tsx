@@ -15,7 +15,8 @@ import {
   Loader2,
   MessageSquare,
   Trash2,
-  History
+  History,
+  Edit3
 } from 'lucide-react';
 import { useLanguage } from '../../lib/i18n';
 import { FilePickerModal } from '../../components/dashboard/SharedModals';
@@ -32,7 +33,8 @@ import {
   useCreateChatSession, 
   useDeleteChatSession,
   useChatSessionById,
-  useSendMessageToSession
+  useSendMessageToSession,
+  useUpdateChatSessionTitle
 } from '../../hooks/useChatSession';
 import { 
   adaptMessageToApi, 
@@ -49,6 +51,8 @@ export const KnowledgeCenter: React.FC = () => {
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [deepThinkingEnabled, setDeepThinkingEnabled] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState<ChatSessionId | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient(); // 1. 初始化 queryClient
   // FilePickerModal状态
@@ -83,6 +87,7 @@ export const KnowledgeCenter: React.FC = () => {
   const createSessionMutation = useCreateChatSession();
   const deleteSessionMutation = useDeleteChatSession();
   const sendMessageMutation = useSendMessageToSession();
+  const updateSessionTitleMutation = useUpdateChatSessionTitle();
   
 useEffect(() => {
     if (sessionDetail && activeSessionId && !isReceivingResponse) {
@@ -186,6 +191,36 @@ useEffect(() => {
         }
       });
     }
+  };
+
+  // 开始编辑标题
+  const handleStartEditingTitle = (sessionId: ChatSessionId, currentTitle: string) => {
+    setEditingSessionId(sessionId);
+    setEditingTitle(currentTitle || '');
+  };
+
+  // 保存编辑的标题
+  const handleSaveTitle = () => {
+    if (editingSessionId && editingTitle.trim()) {
+      updateSessionTitleMutation.mutate({
+        id: editingSessionId,
+        title: editingTitle.trim()
+      }, {
+        onSuccess: () => {
+          setEditingSessionId(null);
+          setEditingTitle('');
+        },
+        onError: (error) => {
+          console.error('Failed to update session title:', error);
+        }
+      });
+    }
+  };
+
+  // 取消编辑标题
+  const handleCancelEditing = () => {
+    setEditingSessionId(null);
+    setEditingTitle('');
   };
 
   // 发送消息
@@ -488,31 +523,92 @@ useEffect(() => {
                 </div>
               ) : (
                 chatSessions.map((session) => (
-                  <div key={session.id} className={`bg-white p-3 rounded-lg border hover:border-gray-200 transition-colors cursor-pointer ${
+                  <div key={session.id} className={`bg-white p-3 rounded-lg border hover:border-gray-200 transition-colors ${
                     activeSessionId === session.id ? 'border-primary-200 bg-primary-50' : 'border-gray-100'
                   }`}>
                     <div className="flex items-start justify-between">
                       <div 
                         className="flex-1 min-w-0"
-                        onClick={() => handleSelectSession(session.id)}
+                        onClick={() => editingSessionId !== session.id ? handleSelectSession(session.id) : undefined}
                       >
-                        <h4 className="font-medium text-sm text-gray-900 truncate">{session.title}</h4>
-                        <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
-                          <span>{session.type}</span>
-                          <span>{new Date(session.createdAt).toLocaleDateString()}</span>
-                        </div>
+                        {editingSessionId === session.id ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={editingTitle}
+                              onChange={(e) => setEditingTitle(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleSaveTitle();
+                                } else if (e.key === 'Escape') {
+                                  handleCancelEditing();
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+                              autoFocus
+                            />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSaveTitle();
+                              }}
+                              className="p-1 text-green-600 hover:text-green-700 transition-colors"
+                              title="保存"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleCancelEditing();
+                              }}
+                              className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                              title="取消"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <h4 className="font-medium text-sm text-gray-900 truncate">{session.title}</h4>
+                            <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
+                              <span>{session.type}</span>
+                              <span>{new Date(session.createdAt).toLocaleDateString()}</span>
+                            </div>
+                          </>
+                        )}
                       </div>
                       <div className="ml-2 flex-shrink-0">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteSession(session.id);
-                          }}
-                          className="p-1 text-gray-400 hover:text-red-500 transition-colors"
-                          title="删除对话"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        {editingSessionId !== session.id && (
+                          <>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStartEditingTitle(session.id, session.title || '');
+                              }}
+                              className="p-1 text-gray-400 hover:text-blue-500 transition-colors mr-1"
+                              title="编辑标题"
+                            >
+                              <Edit3 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteSession(session.id);
+                              }}
+                              className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                              title="删除对话"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>

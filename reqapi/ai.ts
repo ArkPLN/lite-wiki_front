@@ -96,3 +96,18 @@ export const sendMessageToSession = async (id: ChatSessionId, messageRequest: Ch
   
   return response;
 }
+
+// 修改AI会话标题
+export const updateChatSessionTitle = async (id: ChatSessionId, title: string): Promise<{message:string}> => {
+  const config: AxiosRequestConfig = {
+    method: 'PUT',
+    url: `/api/v1/chat/sessions/${id}/title`,
+    headers: {
+      'Authorization': getUserToken()
+    },
+    data: { title: title }
+  }
+  const response = await axios(config)
+  return response.data as {message:string}
+
+}
